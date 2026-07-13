@@ -5,7 +5,7 @@ from typing import Literal
 
 import ollama
 
-from storage.models import AdjudicationLog, Concept
+from storage.models import AdjudicationLog, Concept, MergeQueue
 
 MATCH_THRESHOLD = 0.85
 NEW_THRESHOLD = 0.65
@@ -128,4 +128,14 @@ def resolve_candidate(
 
         return ResolutionResult(decision="new", concept_id=concept.id)
 
-    raise NotImplementedError("queued routing added in the next task")
+    session.add(MergeQueue(
+        candidate_name=candidate_name,
+        candidate_category=candidate_category,
+        matched_concept_id=adjudication.get("matched_concept_id"),
+        llm_confidence=confidence,
+        llm_reasoning=adjudication["reasoning"],
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+    ))
+    session.commit()
+    return ResolutionResult(decision="queued", concept_id=None)

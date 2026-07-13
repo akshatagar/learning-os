@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from resolution.adjudicate import _query_neighbors, call_ollama_adjudicate, resolve_candidate
-from storage.models import AdjudicationLog, Concept
+from storage.models import AdjudicationLog, Concept, MergeQueue
 
 
 def test_query_neighbors_returns_empty_list_when_collection_is_empty(collection):
@@ -107,3 +107,57 @@ def test_confident_new_creates_concept_and_embeds_it(session, collection):
     )
     assert log is not None
     assert log.model_decision == "new"
+
+
+def test_uncertain_decision_queues_for_review(session, collection):
+    def fake_adjudicate(candidate_name, candidate_description, neighbors):
+        return {
+            "decision": "uncertain",
+            "matched_concept_id": None,
+            "confidence": 0.5,
+            "reasoning": "ambiguous",
+        }
+
+    result = resolve_candidate(
+        session, collection, "attention mechanism",
+        adjudicate_fn=fake_adjudicate,
+    )
+
+    assert result.decision == "queued"
+    assert result.concept_id is None
+
+    queued = session.scalar(
+        select(MergeQueue).where(MergeQueue.candidate_name == "attention mechanism")
+    )
+    assert queued is not None
+    assert queued.status == "pending"
+    assert session.query(Concept).count() == 0
+
+
+def test_low_confidence_match_queues_instead_of_reinforcing(session, collection):
+    existing = Concept(name="gradient descent", confidence_score=0.5)
+    session.add(existing)
+    session.commit()
+
+    def fake_adjudicate(candidate_name, candidate_description, neighbors):
+        return {
+            "decision": "match",
+            "matched_concept_id": existing.id,
+            "confidence": 0.6,
+            "reasoning": "possibly related",
+        }
+
+    result = resolve_candidate(
+        session, collection, "SGD",
+        adjudicate_fn=fake_adjudicate,
+    )
+
+    assert result.decision == "queued"
+    session.refresh(existing)
+    assert existing.confidence_score == 0.5
+
+    queued = session.scalar(
+        select(MergeQueue).where(MergeQueue.candidate_name == "SGD")
+    )
+    assert queued is not None
+    assert queued.matched_concept_id == existing.id
