@@ -110,4 +110,22 @@ def resolve_candidate(
         session.commit()
         return ResolutionResult(decision="match", concept_id=concept.id)
 
-    raise NotImplementedError("new/queued routing added in later tasks")
+    if decision == "new" and confidence >= NEW_THRESHOLD:
+        concept = Concept(
+            name=candidate_name,
+            category=candidate_category,
+            confidence_score=confidence,
+            source_type=source_type,
+            first_seen=datetime.now(timezone.utc),
+            last_reinforced=datetime.now(timezone.utc),
+        )
+        session.add(concept)
+        session.commit()
+
+        collection.add(ids=[str(concept.id)], documents=[candidate_name])
+        concept.embedding_id = str(concept.id)
+        session.commit()
+
+        return ResolutionResult(decision="new", concept_id=concept.id)
+
+    raise NotImplementedError("queued routing added in the next task")

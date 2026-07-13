@@ -72,3 +72,38 @@ def test_confident_match_reinforces_existing_concept(session, collection):
     assert log is not None
     assert log.model_decision == "match"
     assert log.model_confidence == 0.9
+
+
+def test_confident_new_creates_concept_and_embeds_it(session, collection):
+    def fake_adjudicate(candidate_name, candidate_description, neighbors):
+        return {
+            "decision": "new",
+            "matched_concept_id": None,
+            "confidence": 0.8,
+            "reasoning": "no close match in KB",
+        }
+
+    result = resolve_candidate(
+        session, collection, "diffusion models",
+        candidate_category="ML", source_type="paper",
+        adjudicate_fn=fake_adjudicate,
+    )
+
+    assert result.decision == "new"
+    assert result.concept_id is not None
+
+    concept = session.get(Concept, result.concept_id)
+    assert concept.name == "diffusion models"
+    assert concept.category == "ML"
+    assert concept.source_type == "paper"
+    assert concept.confidence_score == 0.8
+    assert concept.embedding_id == str(concept.id)
+
+    stored = collection.get(ids=[str(concept.id)])
+    assert stored["documents"] == ["diffusion models"]
+
+    log = session.scalar(
+        select(AdjudicationLog).where(AdjudicationLog.candidate_name == "diffusion models")
+    )
+    assert log is not None
+    assert log.model_decision == "new"
