@@ -1,8 +1,11 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 
 import ollama
+
+from storage.models import AdjudicationLog, Concept
 
 MATCH_THRESHOLD = 0.85
 NEW_THRESHOLD = 0.65
@@ -78,3 +81,33 @@ def call_ollama_adjudicate(candidate_name, candidate_description, neighbors):
         options={"num_gpu": 0},
     )
     return json.loads(response["message"]["content"])
+
+
+def resolve_candidate(
+    session, collection, candidate_name,
+    candidate_category=None, candidate_description=None, source_type=None,
+    k=DEFAULT_K, adjudicate_fn=call_ollama_adjudicate,
+):
+    neighbors = _query_neighbors(collection, candidate_name, k)
+    adjudication = adjudicate_fn(candidate_name, candidate_description, neighbors)
+    decision = adjudication["decision"]
+    confidence = adjudication["confidence"]
+
+    session.add(AdjudicationLog(
+        candidate_name=candidate_name,
+        candidate_description=candidate_description,
+        retrieved_neighbors=json.dumps(neighbors),
+        model_decision=decision,
+        model_confidence=confidence,
+        model_reasoning=adjudication["reasoning"],
+        created_at=datetime.now(timezone.utc),
+    ))
+
+    if decision == "match" and confidence >= MATCH_THRESHOLD:
+        concept = session.get(Concept, adjudication["matched_concept_id"])
+        concept.confidence_score = min(1.0, (concept.confidence_score or 0.0) + 0.05)
+        concept.last_reinforced = datetime.now(timezone.utc)
+        session.commit()
+        return ResolutionResult(decision="match", concept_id=concept.id)
+
+    raise NotImplementedError("new/queued routing added in later tasks")
