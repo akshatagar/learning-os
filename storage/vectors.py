@@ -10,5 +10,7 @@ def get_chroma_client(path):
 
 def get_concepts_collection(client):
     return client.get_or_create_collection(
-        name="concepts", embedding_function=_EMBEDDING_FUNCTION
+        name="concepts",
+        embedding_function=_EMBEDDING_FUNCTION,
+        metadata={"hnsw:space": "cosine"},
     )
