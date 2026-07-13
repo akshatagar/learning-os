@@ -1,15 +1,8 @@
-from pathlib import Path
-
-import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import inspect, select
 
+from conftest import _run_migrations
 from storage.db import get_engine, get_session
 from storage.models import Concept
-from storage.vectors import get_chroma_client, get_concepts_collection
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 EXPECTED_TABLES = {
     "concepts": {
@@ -35,26 +28,6 @@ EXPECTED_TABLES = {
         "id", "title", "description", "skill_match_pct", "missing_skills", "status",
     },
 }
-
-
-def _run_migrations(db_path):
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
-    command.upgrade(cfg, "head")
-
-
-@pytest.fixture
-def engine(tmp_path):
-    db_path = tmp_path / "learning_os.db"
-    _run_migrations(db_path)
-    return get_engine(db_path)
-
-
-@pytest.fixture
-def session(engine):
-    with get_session(engine) as session:
-        yield session
 
 
 def test_migrations_create_all_tables_with_expected_columns(engine):
@@ -104,14 +77,11 @@ def test_upgrading_twice_is_idempotent_and_preserves_data(tmp_path):
         assert row is not None
 
 
-def test_embed_concept_and_query_round_trips_to_correct_sqlite_row(session, tmp_path):
+def test_embed_concept_and_query_round_trips_to_correct_sqlite_row(session, collection, tmp_path):
     ml_concept = Concept(name="gradient descent")
     art_concept = Concept(name="watercolor painting")
     session.add_all([ml_concept, art_concept])
     session.commit()
-
-    client = get_chroma_client(tmp_path / "chroma")
-    collection = get_concepts_collection(client)
 
     collection.add(ids=[str(ml_concept.id)], documents=["gradient descent"])
     collection.add(ids=[str(art_concept.id)], documents=["watercolor painting"])
