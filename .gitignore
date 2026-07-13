@@ -6,12 +6,18 @@ dist/
 wheels/
 *.egg-info
 
+# Test artifacts
+.pytest_cache/
+
 # Virtual environments
 .venv
 
-
 .env
 
+.claude
 
 design-spec.md
 
+docs/
+
+data/
