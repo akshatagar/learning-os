@@ -75,12 +75,6 @@ def call_ollama_adjudicate(candidate_name, candidate_description, neighbors):
             }
         ],
         format=ADJUDICATION_SCHEMA,
-        # This machine's GPU (2GB VRAM) crashes with "CUDA error: shared object
-        # initialization failed" when JSON-schema-constrained decoding (the
-        # `format=` above) runs with GPU offload enabled; plain unconstrained
-        # generation offloads fine on this same GPU. CPU-only inference sidesteps
-        # the crash, so GPU offload is disabled here.
-        options={"num_gpu": 0},
     )
     return json.loads(response["message"]["content"])
 

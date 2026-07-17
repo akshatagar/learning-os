@@ -119,10 +119,6 @@ def call_ollama_extract(section_text: str) -> list[dict]:
         model="qwen2.5:7b",
         messages=[{"role": "user", "content": _build_extraction_prompt(section_text)}],
         format=EXTRACTION_SCHEMA,
-        # Same CUDA workaround as resolution/adjudicate.py:78-83 — this
-        # machine's GPU crashes on JSON-schema-constrained decoding with
-        # GPU offload enabled.
-        options={"num_gpu": 0},
     )
     return json.loads(response["message"]["content"])
 
