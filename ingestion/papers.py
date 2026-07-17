@@ -1,9 +1,12 @@
+import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import urlparse
 
 import httpx
+from docling.datamodel.base_models import DocumentStream
+from docling.document_converter import DocumentConverter
 
 
 class IngestState(TypedDict):
@@ -35,3 +38,10 @@ def fetch_source(state: IngestState) -> dict:
         response.raise_for_status()
         return {"pdf_bytes": response.content}
     return {"pdf_bytes": Path(source).read_bytes()}
+
+
+def parse_docling(state: IngestState, converter_factory=DocumentConverter) -> dict:
+    stream = DocumentStream(name="source.pdf", stream=io.BytesIO(state["pdf_bytes"]))
+    converter = converter_factory()
+    result = converter.convert(stream)
+    return {"docling_doc": result.document}
