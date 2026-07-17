@@ -2,6 +2,7 @@ import io
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import urlparse
@@ -10,6 +11,9 @@ import httpx
 import ollama
 from docling.datamodel.base_models import DocumentStream
 from docling.document_converter import DocumentConverter
+
+from resolution.adjudicate import call_ollama_adjudicate, resolve_candidate
+from storage.models import ContentLog
 
 
 class IngestState(TypedDict):
@@ -126,3 +130,41 @@ def extract_concepts(state: IngestState, extract_fn=call_ollama_extract) -> dict
     combined_text = "\n\n".join(state["targeted_sections"])
     candidates = extract_fn(combined_text)
     return {"candidates": candidates}
+
+
+def build_resolve_candidates_node(session, collection, adjudicate_fn=call_ollama_adjudicate):
+    def node(state: IngestState) -> dict:
+        concept_ids: list[int] = []
+        queued_count = 0
+        for candidate in state["candidates"]:
+            result = resolve_candidate(
+                session,
+                collection,
+                candidate["name"],
+                candidate_category=candidate.get("category"),
+                source_type="paper",
+                adjudicate_fn=adjudicate_fn,
+            )
+            if result.decision == "queued":
+                queued_count += 1
+            else:
+                concept_ids.append(result.concept_id)
+        return {"concept_ids": concept_ids, "queued_count": queued_count}
+
+    return node
+
+
+def build_write_content_log_node(session):
+    def node(state: IngestState) -> dict:
+        log = ContentLog(
+            source_path=state["source"],
+            source_type="paper",
+            ingested_at=datetime.now(timezone.utc),
+            extracted_concepts=json.dumps(state["concept_ids"]),
+            summary=None,
+        )
+        session.add(log)
+        session.commit()
+        return {"content_log_id": log.id}
+
+    return node

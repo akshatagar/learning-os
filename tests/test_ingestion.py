@@ -1,6 +1,12 @@
+import json
+
+from storage.models import ContentLog
+
 from ingestion.papers import (
     IngestResult,
     IngestState,
+    build_resolve_candidates_node,
+    build_write_content_log_node,
     call_ollama_extract,
     extract_concepts,
     fetch_source,
@@ -123,3 +129,46 @@ def test_call_ollama_extract_returns_schema_valid_candidates():
         assert isinstance(candidate["category"], str) and candidate["category"]
         assert isinstance(candidate["extraction_confidence"], (int, float))
         assert 0.0 <= candidate["extraction_confidence"] <= 1.0
+
+
+def test_resolve_candidates_node_counts_new_and_queued(session, collection):
+    def fake_adjudicate(candidate_name, candidate_description, neighbors):
+        if candidate_name == "diffusion models":
+            return {
+                "decision": "new",
+                "matched_concept_id": None,
+                "confidence": 0.8,
+                "reasoning": "novel concept",
+            }
+        return {
+            "decision": "uncertain",
+            "matched_concept_id": None,
+            "confidence": 0.4,
+            "reasoning": "unsure",
+        }
+
+    node = build_resolve_candidates_node(session, collection, adjudicate_fn=fake_adjudicate)
+    state = {
+        "candidates": [
+            {"name": "diffusion models", "category": "ML", "extraction_confidence": 0.9},
+            {"name": "vague thing", "category": "ML", "extraction_confidence": 0.3},
+        ]
+    }
+
+    result = node(state)
+
+    assert len(result["concept_ids"]) == 1
+    assert result["queued_count"] == 1
+
+
+def test_write_content_log_node_creates_row(session):
+    node = build_write_content_log_node(session)
+    state = {"source": "https://arxiv.org/abs/1234.5678", "concept_ids": [1, 2]}
+
+    result = node(state)
+
+    log = session.get(ContentLog, result["content_log_id"])
+    assert log.source_path == "https://arxiv.org/abs/1234.5678"
+    assert log.source_type == "paper"
+    assert json.loads(log.extracted_concepts) == [1, 2]
+    assert log.summary is None
