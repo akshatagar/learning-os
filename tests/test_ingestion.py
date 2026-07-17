@@ -5,6 +5,7 @@ from storage.models import ContentLog
 from ingestion.papers import (
     IngestResult,
     IngestState,
+    build_papers_graph,
     build_resolve_candidates_node,
     build_write_content_log_node,
     call_ollama_extract,
@@ -172,3 +173,18 @@ def test_write_content_log_node_creates_row(session):
     assert log.source_type == "paper"
     assert json.loads(log.extracted_concepts) == [1, 2]
     assert log.summary is None
+
+
+def test_build_papers_graph_has_expected_nodes(session, collection):
+    app = build_papers_graph(session, collection)
+
+    node_names = set(app.get_graph().nodes) - {"__start__", "__end__"}
+
+    assert node_names == {
+        "fetch_source",
+        "parse_docling",
+        "target_sections",
+        "extract_concepts",
+        "resolve_candidates",
+        "write_content_log",
+    }

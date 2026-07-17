@@ -11,6 +11,7 @@ import httpx
 import ollama
 from docling.datamodel.base_models import DocumentStream
 from docling.document_converter import DocumentConverter
+from langgraph.graph import END, START, StateGraph
 
 from resolution.adjudicate import call_ollama_adjudicate, resolve_candidate
 from storage.models import ContentLog
@@ -168,3 +169,42 @@ def build_write_content_log_node(session):
         return {"content_log_id": log.id}
 
     return node
+
+
+def build_papers_graph(session, collection):
+    graph = StateGraph(IngestState)
+    graph.add_node("fetch_source", fetch_source)
+    graph.add_node("parse_docling", parse_docling)
+    graph.add_node("target_sections", target_sections)
+    graph.add_node("extract_concepts", extract_concepts)
+    graph.add_node("resolve_candidates", build_resolve_candidates_node(session, collection))
+    graph.add_node("write_content_log", build_write_content_log_node(session))
+
+    graph.add_edge(START, "fetch_source")
+    graph.add_edge("fetch_source", "parse_docling")
+    graph.add_edge("parse_docling", "target_sections")
+    graph.add_edge("target_sections", "extract_concepts")
+    graph.add_edge("extract_concepts", "resolve_candidates")
+    graph.add_edge("resolve_candidates", "write_content_log")
+    graph.add_edge("write_content_log", END)
+
+    return graph.compile()
+
+
+def ingest_paper(session, collection, source: str) -> IngestResult:
+    app = build_papers_graph(session, collection)
+    final_state = app.invoke({
+        "source": source,
+        "pdf_bytes": None,
+        "docling_doc": None,
+        "targeted_sections": [],
+        "candidates": [],
+        "concept_ids": [],
+        "queued_count": 0,
+        "content_log_id": None,
+    })
+    return IngestResult(
+        content_log_id=final_state["content_log_id"],
+        concept_ids=final_state["concept_ids"],
+        queued_count=final_state["queued_count"],
+    )
