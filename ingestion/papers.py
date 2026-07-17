@@ -1,5 +1,9 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict
+from urllib.parse import urlparse
+
+import httpx
 
 
 class IngestState(TypedDict):
@@ -18,3 +22,16 @@ class IngestResult:
     content_log_id: int
     concept_ids: list[int]
     queued_count: int
+
+
+def _is_url(source: str) -> bool:
+    return urlparse(source).scheme in ("http", "https")
+
+
+def fetch_source(state: IngestState) -> dict:
+    source = state["source"]
+    if _is_url(source):
+        response = httpx.get(source, follow_redirects=True)
+        response.raise_for_status()
+        return {"pdf_bytes": response.content}
+    return {"pdf_bytes": Path(source).read_bytes()}
