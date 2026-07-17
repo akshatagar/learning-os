@@ -1,6 +1,7 @@
 from ingestion.papers import (
     IngestResult,
     IngestState,
+    extract_concepts,
     fetch_source,
     parse_docling,
     target_sections,
@@ -87,3 +88,20 @@ def test_target_sections_falls_back_to_full_text_when_no_heading_matches():
     result = target_sections({"docling_doc": _FakeDoclingDoc(markdown)})
 
     assert result["targeted_sections"] == [markdown]
+
+
+def test_extract_concepts_uses_injected_extract_fn():
+    def fake_extract(section_text):
+        assert "gradient descent" in section_text
+        return [
+            {"name": "gradient descent", "category": "optimization", "extraction_confidence": 0.9}
+        ]
+
+    result = extract_concepts(
+        {"targeted_sections": ["We propose a new architecture using gradient descent."]},
+        extract_fn=fake_extract,
+    )
+
+    assert result["candidates"] == [
+        {"name": "gradient descent", "category": "optimization", "extraction_confidence": 0.9}
+    ]

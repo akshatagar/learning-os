@@ -1,4 +1,5 @@
 import io
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +7,7 @@ from typing import Any, TypedDict
 from urllib.parse import urlparse
 
 import httpx
+import ollama
 from docling.datamodel.base_models import DocumentStream
 from docling.document_converter import DocumentConverter
 
@@ -79,3 +81,48 @@ def target_sections(state: IngestState) -> dict:
     if not matched:
         return {"targeted_sections": [markdown]}
     return {"targeted_sections": matched}
+
+
+EXTRACTION_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "category": {"type": "string"},
+            "extraction_confidence": {"type": "number"},
+        },
+        "required": ["name", "category", "extraction_confidence"],
+    },
+}
+
+
+def _build_extraction_prompt(section_text: str) -> str:
+    return (
+        "You are extracting technical concepts from a research paper's "
+        "methodology/architecture sections.\n\n"
+        f"Text:\n{section_text}\n\n"
+        "List the distinct technical concepts named in this text. For each, "
+        "give its name, a short free-form category label, and your "
+        "confidence 0-1 that it is a genuine, well-defined technical "
+        "concept (not a generic word)."
+    )
+
+
+def call_ollama_extract(section_text: str) -> list[dict]:
+    response = ollama.chat(
+        model="qwen2.5:7b",
+        messages=[{"role": "user", "content": _build_extraction_prompt(section_text)}],
+        format=EXTRACTION_SCHEMA,
+        # Same CUDA workaround as resolution/adjudicate.py:78-83 — this
+        # machine's GPU crashes on JSON-schema-constrained decoding with
+        # GPU offload enabled.
+        options={"num_gpu": 0},
+    )
+    return json.loads(response["message"]["content"])
+
+
+def extract_concepts(state: IngestState, extract_fn=call_ollama_extract) -> dict:
+    combined_text = "\n\n".join(state["targeted_sections"])
+    candidates = extract_fn(combined_text)
+    return {"candidates": candidates}
