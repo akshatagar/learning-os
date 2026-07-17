@@ -1,4 +1,5 @@
 import io
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
@@ -45,3 +46,36 @@ def parse_docling(state: IngestState, converter_factory=DocumentConverter) -> di
     converter = converter_factory()
     result = converter.convert(stream)
     return {"docling_doc": result.document}
+
+
+SECTION_KEYWORDS = ["method", "approach", "architecture", "model", "design"]
+
+
+def _split_markdown_sections(markdown: str) -> list[tuple[str, str]]:
+    sections = []
+    heading = ""
+    body_lines: list[str] = []
+    for line in markdown.splitlines():
+        if re.match(r"^#{1,6}\s+", line):
+            if heading or body_lines:
+                sections.append((heading, "\n".join(body_lines).strip()))
+            heading = re.sub(r"^#{1,6}\s+", "", line).strip()
+            body_lines = []
+        else:
+            body_lines.append(line)
+    if heading or body_lines:
+        sections.append((heading, "\n".join(body_lines).strip()))
+    return sections
+
+
+def target_sections(state: IngestState) -> dict:
+    markdown = state["docling_doc"].export_to_markdown()
+    sections = _split_markdown_sections(markdown)
+    matched = [
+        body
+        for heading, body in sections
+        if any(keyword in heading.lower() for keyword in SECTION_KEYWORDS)
+    ]
+    if not matched:
+        return {"targeted_sections": [markdown]}
+    return {"targeted_sections": matched}
