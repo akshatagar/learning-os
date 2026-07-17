@@ -23,3 +23,5 @@ docs/
 data/
 
 progress.md
+
+cli.py
