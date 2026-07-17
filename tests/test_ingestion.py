@@ -1,6 +1,7 @@
 from ingestion.papers import (
     IngestResult,
     IngestState,
+    call_ollama_extract,
     extract_concepts,
     fetch_source,
     parse_docling,
@@ -105,3 +106,20 @@ def test_extract_concepts_uses_injected_extract_fn():
     assert result["candidates"] == [
         {"name": "gradient descent", "category": "optimization", "extraction_confidence": 0.9}
     ]
+
+
+def test_call_ollama_extract_returns_schema_valid_candidates():
+    section_text = (
+        "We propose a new architecture based on the attention mechanism, "
+        "using gradient descent for optimization during training."
+    )
+
+    result = call_ollama_extract(section_text)
+
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    for candidate in result:
+        assert isinstance(candidate["name"], str) and candidate["name"]
+        assert isinstance(candidate["category"], str) and candidate["category"]
+        assert isinstance(candidate["extraction_confidence"], (int, float))
+        assert 0.0 <= candidate["extraction_confidence"] <= 1.0
