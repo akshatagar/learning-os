@@ -4,7 +4,7 @@ import pytest
 
 from storage.models import Concept, ContentLog
 from ingestion.papers import build_resolve_candidates_node, build_write_content_log_node
-from ingestion.notes import extract_concepts, read_note
+from ingestion.notes import call_ollama_extract_note, extract_concepts, read_note
 
 
 def test_resolve_candidates_node_forwards_note_source_type(session, collection):
@@ -83,3 +83,23 @@ def test_extract_concepts_uses_injected_extract_fn():
     assert result["candidates"] == [
         {"name": "beam search", "category": "decoding", "extraction_confidence": 0.9}
     ]
+
+
+def test_call_ollama_extract_note_returns_schema_valid_candidates():
+    note_text = (
+        "Spent the evening implementing a small transformer from scratch. "
+        "Finally understood how multi-head attention splits the embedding "
+        "dimension across heads, and compared layer normalization placement "
+        "(pre-norm vs post-norm) to see why pre-norm trains more stably. "
+        "TODO: read about rotary positional embeddings sometime."
+    )
+
+    result = call_ollama_extract_note(note_text)
+
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    for candidate in result:
+        assert isinstance(candidate["name"], str) and candidate["name"]
+        assert isinstance(candidate["category"], str) and candidate["category"]
+        assert isinstance(candidate["extraction_confidence"], (int, float))
+        assert 0.0 <= candidate["extraction_confidence"] <= 1.0
