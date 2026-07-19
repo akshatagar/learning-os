@@ -4,7 +4,12 @@ import pytest
 
 from storage.models import Concept, ContentLog
 from ingestion.papers import build_resolve_candidates_node, build_write_content_log_node
-from ingestion.notes import call_ollama_extract_note, extract_concepts, read_note
+from ingestion.notes import (
+    build_notes_graph,
+    call_ollama_extract_note,
+    extract_concepts,
+    read_note,
+)
 
 
 def test_resolve_candidates_node_forwards_note_source_type(session, collection):
@@ -103,3 +108,16 @@ def test_call_ollama_extract_note_returns_schema_valid_candidates():
         assert isinstance(candidate["category"], str) and candidate["category"]
         assert isinstance(candidate["extraction_confidence"], (int, float))
         assert 0.0 <= candidate["extraction_confidence"] <= 1.0
+
+
+def test_build_notes_graph_has_expected_nodes(session, collection):
+    app = build_notes_graph(session, collection)
+
+    node_names = set(app.get_graph().nodes) - {"__start__", "__end__"}
+
+    assert node_names == {
+        "read_note",
+        "extract_concepts",
+        "resolve_candidates",
+        "write_content_log",
+    }
