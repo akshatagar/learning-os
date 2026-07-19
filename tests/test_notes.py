@@ -4,7 +4,7 @@ import pytest
 
 from storage.models import Concept, ContentLog
 from ingestion.papers import build_resolve_candidates_node, build_write_content_log_node
-from ingestion.notes import read_note
+from ingestion.notes import extract_concepts, read_note
 
 
 def test_resolve_candidates_node_forwards_note_source_type(session, collection):
@@ -66,3 +66,20 @@ def test_read_note_raises_for_empty_note(tmp_path):
 
     with pytest.raises(ValueError):
         read_note({"source": str(note_path)})
+
+
+def test_extract_concepts_uses_injected_extract_fn():
+    def fake_extract(note_text):
+        assert "beam search" in note_text
+        return [
+            {"name": "beam search", "category": "decoding", "extraction_confidence": 0.9}
+        ]
+
+    result = extract_concepts(
+        {"note_text": "Today I implemented beam search from scratch."},
+        extract_fn=fake_extract,
+    )
+
+    assert result["candidates"] == [
+        {"name": "beam search", "category": "decoding", "extraction_confidence": 0.9}
+    ]
