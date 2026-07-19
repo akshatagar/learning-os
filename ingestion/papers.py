@@ -129,7 +129,9 @@ def extract_concepts(state: IngestState, extract_fn=call_ollama_extract) -> dict
     return {"candidates": candidates}
 
 
-def build_resolve_candidates_node(session, collection, adjudicate_fn=call_ollama_adjudicate):
+def build_resolve_candidates_node(
+    session, collection, adjudicate_fn=call_ollama_adjudicate, source_type="paper"
+):
     def node(state: IngestState) -> dict:
         concept_ids: list[int] = []
         queued_count = 0
@@ -139,7 +141,7 @@ def build_resolve_candidates_node(session, collection, adjudicate_fn=call_ollama
                 collection,
                 candidate["name"],
                 candidate_category=candidate.get("category"),
-                source_type="paper",
+                source_type=source_type,
                 adjudicate_fn=adjudicate_fn,
             )
             if result.decision == "queued":
@@ -151,11 +153,11 @@ def build_resolve_candidates_node(session, collection, adjudicate_fn=call_ollama
     return node
 
 
-def build_write_content_log_node(session):
+def build_write_content_log_node(session, source_type="paper"):
     def node(state: IngestState) -> dict:
         log = ContentLog(
             source_path=state["source"],
-            source_type="paper",
+            source_type=source_type,
             ingested_at=datetime.now(timezone.utc),
             extracted_concepts=json.dumps(state["concept_ids"]),
             summary=None,
