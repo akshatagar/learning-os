@@ -89,7 +89,7 @@ def resolve_candidate(
     decision = adjudication["decision"]
     confidence = adjudication["confidence"]
 
-    session.add(AdjudicationLog(
+    log = AdjudicationLog(
         candidate_name=candidate_name,
         candidate_description=candidate_description,
         retrieved_neighbors=json.dumps(neighbors),
@@ -97,7 +97,9 @@ def resolve_candidate(
         model_confidence=confidence,
         model_reasoning=adjudication["reasoning"],
         created_at=datetime.now(timezone.utc),
-    ))
+    )
+    session.add(log)
+    session.flush()
 
     if decision == "match" and confidence >= MATCH_THRESHOLD:
         concept = session.get(Concept, adjudication["matched_concept_id"])
@@ -132,6 +134,8 @@ def resolve_candidate(
         llm_reasoning=adjudication["reasoning"],
         status="pending",
         created_at=datetime.now(timezone.utc),
+        adjudication_log_id=log.id,
+        source_type=source_type,
     ))
     session.commit()
     return ResolutionResult(decision="queued", concept_id=None)

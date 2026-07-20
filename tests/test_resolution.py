@@ -161,3 +161,28 @@ def test_low_confidence_match_queues_instead_of_reinforcing(session, collection)
     )
     assert queued is not None
     assert queued.matched_concept_id == existing.id
+
+
+def test_queued_entry_links_adjudication_log_and_source_type(session, collection):
+    def fake_adjudicate(candidate_name, candidate_description, neighbors):
+        return {
+            "decision": "uncertain",
+            "matched_concept_id": None,
+            "confidence": 0.4,
+            "reasoning": "too vague to decide",
+        }
+
+    result = resolve_candidate(
+        session, collection, "attention",
+        source_type="note",
+        adjudicate_fn=fake_adjudicate,
+    )
+
+    assert result.decision == "queued"
+    entry = session.scalars(select(MergeQueue)).one()
+    assert entry.source_type == "note"
+    assert entry.adjudication_log_id is not None
+
+    log = session.get(AdjudicationLog, entry.adjudication_log_id)
+    assert log.candidate_name == "attention"
+    assert log.model_decision == "uncertain"
