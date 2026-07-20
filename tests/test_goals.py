@@ -3,8 +3,9 @@ import re
 
 from sqlalchemy import select
 
+from goals.gaps import GapResult, concept_gaps
 from goals.seed import GOAL_SEEDS, seed_goals
-from storage.models import Goal
+from storage.models import Concept, Goal
 
 EXPECTED_CATEGORIES = {
     "llm-internals",
@@ -64,3 +65,80 @@ def test_every_acronym_requirement_includes_an_expansion():
                 offenders.append((seed["category"], requirement))
 
     assert offenders == []
+
+
+def _goal(requirements):
+    return Goal(
+        description="test goal",
+        category="test",
+        priority=1,
+        concept_requirements=json.dumps(requirements),
+    )
+
+
+def _add_concept(session, collection, name, confidence):
+    concept = Concept(name=name, confidence_score=confidence)
+    session.add(concept)
+    session.commit()
+    collection.add(ids=[str(concept.id)], documents=[name])
+    return concept
+
+
+def test_concept_gaps_marks_a_close_match_present(session, collection):
+    _add_concept(session, collection, "Self-attention layers", 0.8)
+
+    result = concept_gaps(session, collection, _goal(["self-attention"]))
+
+    assert result.present == ["self-attention"]
+    assert result.missing == []
+
+
+def test_concept_gaps_marks_an_unrelated_requirement_missing(session, collection):
+    _add_concept(session, collection, "Self-attention layers", 0.8)
+
+    result = concept_gaps(
+        session, collection, _goal(["AWS Lambda serverless functions"])
+    )
+
+    assert result.missing == ["AWS Lambda serverless functions"]
+    assert result.present == []
+
+
+def test_concept_gaps_marks_a_semantically_adjacent_gap_missing(session, collection):
+    _add_concept(session, collection, "Learned positional embeddings", 0.85)
+
+    result = concept_gaps(
+        session, collection, _goal(["RoPE rotary positional embeddings"])
+    )
+
+    assert result.missing == ["RoPE rotary positional embeddings"]
+
+
+def test_concept_gaps_returns_all_missing_for_an_empty_collection(session, collection):
+    result = concept_gaps(
+        session, collection, _goal(["self-attention", "beam search"])
+    )
+
+    assert result == GapResult(present=[], weak=[], missing=["self-attention", "beam search"])
+
+
+def test_concept_gaps_returns_empty_lists_for_a_goal_with_no_requirements(session, collection):
+    result = concept_gaps(session, collection, _goal([]))
+
+    assert result == GapResult(present=[], weak=[], missing=[])
+
+
+def test_concept_gaps_needs_the_expansion_to_match_an_acronym(session, collection):
+    _add_concept(
+        session, collection,
+        "TFLOPS (Trillion Floating Point Operations Per Second)", 0.85,
+    )
+
+    expanded = concept_gaps(
+        session, collection,
+        _goal(["TFLOPS trillion floating point operations per second"]),
+    )
+    bare = concept_gaps(session, collection, _goal(["TFLOPS"]))
+
+    assert expanded.present == ["TFLOPS trillion floating point operations per second"]
+    assert bare.missing == ["TFLOPS"]
