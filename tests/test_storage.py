@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "merge_queue": {
         "id", "candidate_name", "candidate_category", "matched_concept_id",
         "llm_confidence", "llm_reasoning", "status", "created_at",
+        "adjudication_log_id", "source_type",
     },
     "adjudication_log": {
         "id", "candidate_name", "candidate_description", "retrieved_neighbors",

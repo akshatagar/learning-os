@@ -33,6 +33,10 @@ class MergeQueue(Base):
     llm_reasoning: Mapped[str | None]
     status: Mapped[str] = mapped_column(default="pending")
     created_at: Mapped[datetime | None]
+    adjudication_log_id: Mapped[int | None] = mapped_column(
+        ForeignKey("adjudication_log.id")
+    )
+    source_type: Mapped[str | None]
 
 
 class AdjudicationLog(Base):
