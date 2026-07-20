@@ -37,6 +37,16 @@ def concept_gaps(
             missing.append(requirement)
             continue
 
-        present.append(requirement)
+        concept_id = int(results["ids"][0][0])
+        concept = session.get(Concept, concept_id)
+        if concept is None:
+            raise ValueError(
+                f"Chroma returned concept id {concept_id} with no matching row"
+            )
+
+        if (concept.confidence_score or 0.0) < confidence_threshold:
+            weak.append(requirement)
+        else:
+            present.append(requirement)
 
     return GapResult(present=present, weak=weak, missing=missing)

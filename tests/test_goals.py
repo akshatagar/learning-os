@@ -1,6 +1,8 @@
 import json
 import re
 
+import pytest
+
 from sqlalchemy import select
 
 from goals.gaps import GapResult, concept_gaps
@@ -142,3 +144,31 @@ def test_concept_gaps_needs_the_expansion_to_match_an_acronym(session, collectio
 
     assert expanded.present == ["TFLOPS trillion floating point operations per second"]
     assert bare.missing == ["TFLOPS"]
+
+
+def test_concept_gaps_marks_a_low_confidence_match_weak(session, collection):
+    _add_concept(session, collection, "Beam search", 0.4)
+
+    result = concept_gaps(session, collection, _goal(["beam search"]))
+
+    assert result.weak == ["beam search"]
+    assert result.present == []
+    assert result.missing == []
+
+
+def test_concept_gaps_respects_a_custom_confidence_threshold(session, collection):
+    _add_concept(session, collection, "Beam search", 0.4)
+
+    result = concept_gaps(
+        session, collection, _goal(["beam search"]), confidence_threshold=0.3
+    )
+
+    assert result.present == ["beam search"]
+    assert result.weak == []
+
+
+def test_concept_gaps_raises_when_a_chroma_hit_has_no_sqlite_row(session, collection):
+    collection.add(ids=["9999"], documents=["Beam search"])
+
+    with pytest.raises(ValueError):
+        concept_gaps(session, collection, _goal(["beam search"]))
