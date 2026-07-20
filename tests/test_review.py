@@ -82,3 +82,51 @@ def test_resolve_entry_rejects_unknown_action(session, collection):
 
     with pytest.raises(ValueError):
         resolve_entry(session, collection, entry, "explode")
+
+
+def test_merge_reinforces_target_and_marks_approved_merge(session, collection):
+    target = Concept(name="attention mechanism", confidence_score=0.5)
+    session.add(target)
+    session.commit()
+    entry = MergeQueue(candidate_name="multi-head attention", status="pending")
+    session.add(entry)
+    session.commit()
+
+    result = resolve_entry(session, collection, entry, "merge", target_concept_id=target.id)
+
+    assert result.action == "merge"
+    assert result.concept_id == target.id
+    assert target.confidence_score == pytest.approx(0.55)
+    assert target.last_reinforced is not None
+    assert entry.status == "approved_merge"
+
+
+def test_merge_caps_confidence_at_one(session, collection):
+    target = Concept(name="attention mechanism", confidence_score=0.99)
+    session.add(target)
+    session.commit()
+    entry = MergeQueue(candidate_name="multi-head attention", status="pending")
+    session.add(entry)
+    session.commit()
+
+    resolve_entry(session, collection, entry, "merge", target_concept_id=target.id)
+
+    assert target.confidence_score == 1.0
+
+
+def test_merge_without_target_raises(session, collection):
+    entry = MergeQueue(candidate_name="multi-head attention", status="pending")
+    session.add(entry)
+    session.commit()
+
+    with pytest.raises(ValueError):
+        resolve_entry(session, collection, entry, "merge")
+
+
+def test_merge_into_missing_concept_raises(session, collection):
+    entry = MergeQueue(candidate_name="multi-head attention", status="pending")
+    session.add(entry)
+    session.commit()
+
+    with pytest.raises(ValueError):
+        resolve_entry(session, collection, entry, "merge", target_concept_id=9999)

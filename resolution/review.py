@@ -45,6 +45,16 @@ def resolve_entry(session, collection, entry, action, target_concept_id=None) ->
 
     concept_id = None
 
+    if action == "merge":
+        if target_concept_id is None:
+            raise ValueError("merge requires target_concept_id")
+        concept = session.get(Concept, target_concept_id)
+        if concept is None:
+            raise ValueError(f"No concept with id {target_concept_id}")
+        concept.confidence_score = min(1.0, (concept.confidence_score or 0.0) + 0.05)
+        concept.last_reinforced = datetime.now(timezone.utc)
+        concept_id = concept.id
+
     entry.status = status
     _record_human_resolution(session, entry, status)
     session.commit()
