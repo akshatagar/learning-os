@@ -55,6 +55,21 @@ def resolve_entry(session, collection, entry, action, target_concept_id=None) ->
         concept.last_reinforced = datetime.now(timezone.utc)
         concept_id = concept.id
 
+    elif action == "new":
+        concept = Concept(
+            name=entry.candidate_name,
+            category=entry.candidate_category,
+            confidence_score=HUMAN_CONFIDENCE,
+            source_type=entry.source_type,
+            first_seen=datetime.now(timezone.utc),
+            last_reinforced=datetime.now(timezone.utc),
+        )
+        session.add(concept)
+        session.flush()
+        collection.add(ids=[str(concept.id)], documents=[entry.candidate_name])
+        concept.embedding_id = str(concept.id)
+        concept_id = concept.id
+
     entry.status = status
     _record_human_resolution(session, entry, status)
     session.commit()

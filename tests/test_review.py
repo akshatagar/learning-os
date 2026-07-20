@@ -130,3 +130,41 @@ def test_merge_into_missing_concept_raises(session, collection):
 
     with pytest.raises(ValueError):
         resolve_entry(session, collection, entry, "merge", target_concept_id=9999)
+
+
+def test_new_inserts_concept_with_human_confidence_and_embeds(session, collection):
+    entry = MergeQueue(
+        candidate_name="rotary positional embeddings",
+        candidate_category="positional encoding",
+        status="pending",
+        source_type="note",
+    )
+    session.add(entry)
+    session.commit()
+
+    result = resolve_entry(session, collection, entry, "new")
+
+    assert result.action == "new"
+    concept = session.get(Concept, result.concept_id)
+    assert concept.name == "rotary positional embeddings"
+    assert concept.category == "positional encoding"
+    assert concept.source_type == "note"
+    assert concept.confidence_score == 1.0
+    assert concept.first_seen is not None
+    assert concept.last_reinforced is not None
+    assert concept.embedding_id == str(concept.id)
+    assert entry.status == "approved_new"
+
+
+def test_new_adds_exactly_one_vector_to_chroma(session, collection):
+    entry = MergeQueue(candidate_name="rotary positional embeddings", status="pending")
+    session.add(entry)
+    session.commit()
+    before = collection.count()
+
+    result = resolve_entry(session, collection, entry, "new")
+
+    assert collection.count() == before + 1
+    assert collection.get(ids=[str(result.concept_id)])["documents"] == [
+        "rotary positional embeddings"
+    ]
