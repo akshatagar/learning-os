@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from resolution.adjudicate import _query_neighbors
 from storage.models import AdjudicationLog, Concept, MergeQueue
 
 HUMAN_CONFIDENCE = 1.0
+NEIGHBOR_K = 5
 
 _STATUS_BY_ACTION = {
     "merge": "approved_merge",
@@ -74,3 +76,84 @@ def resolve_entry(session, collection, entry, action, target_concept_id=None) ->
     _record_human_resolution(session, entry, status)
     session.commit()
     return ReviewResult(action=action, concept_id=concept_id)
+
+
+def format_entry(entry, neighbors, position, total):
+    category = f"  [{entry.candidate_category}]" if entry.candidate_category else ""
+    confidence = (
+        f"{entry.llm_confidence:.2f}" if entry.llm_confidence is not None else "n/a"
+    )
+    lines = [
+        "",
+        f"Pending {position}/{total}  (queue id {entry.id})",
+        f'  candidate : "{entry.candidate_name}"{category}',
+        f"  model     : confidence {confidence}",
+        f"  reasoning : {entry.llm_reasoning or '(none recorded)'}",
+        "",
+    ]
+    if neighbors:
+        lines.append("  nearest concepts (live):")
+        for number, neighbor in enumerate(neighbors, start=1):
+            lines.append(
+                f'    {number}. #{neighbor["id"]} "{neighbor["name"]}"'
+                f'  {neighbor["similarity_score"]:.2f}'
+            )
+        lines.append("")
+        lines.append(f"[1-{len(neighbors)}] merge into that   [n] insert as new")
+    else:
+        lines.append("  (no existing concepts to merge into)")
+        lines.append("")
+        lines.append("[n] insert as new")
+    lines.append("[d] dismiss   [s] skip   [q] quit")
+    return "\n".join(lines)
+
+
+def _print_summary(counts):
+    print(
+        f"\nmerged {counts['merged']}, new {counts['new']}, "
+        f"dismissed {counts['dismissed']}, skipped {counts['skipped']}"
+    )
+
+
+def run_review_loop(session, collection, input_fn=input, k=NEIGHBOR_K):
+    counts = {"merged": 0, "new": 0, "dismissed": 0, "skipped": 0}
+    entries = pending_entries(session)
+    if not entries:
+        print("No pending entries in the merge queue.")
+        return counts
+
+    total = len(entries)
+    for position, entry in enumerate(entries, start=1):
+        neighbors = _query_neighbors(collection, entry.candidate_name, k)
+        print(format_entry(entry, neighbors, position, total))
+        while True:
+            try:
+                choice = input_fn("> ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                _print_summary(counts)
+                return counts
+
+            if choice == "q":
+                _print_summary(counts)
+                return counts
+            if choice == "s":
+                counts["skipped"] += 1
+                break
+            if choice == "n":
+                resolve_entry(session, collection, entry, "new")
+                counts["new"] += 1
+                break
+            if choice == "d":
+                resolve_entry(session, collection, entry, "dismiss")
+                counts["dismissed"] += 1
+                break
+            if choice.isdigit() and 1 <= int(choice) <= len(neighbors):
+                target = neighbors[int(choice) - 1]["id"]
+                resolve_entry(session, collection, entry, "merge", target_concept_id=target)
+                counts["merged"] += 1
+                break
+            print("Unrecognized input — pick one of the options above.")
+
+    _print_summary(counts)
+    return counts
