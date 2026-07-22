@@ -1,6 +1,12 @@
 import pytest
 
-from skills.entry import PROFICIENCY_BANDS, add_skill, existing_skills, find_skill
+from skills.entry import (
+    PROFICIENCY_BANDS,
+    add_skill,
+    existing_skills,
+    find_skill,
+    run_skill_entry_loop,
+)
 from storage.models import Skill
 
 
@@ -80,3 +86,103 @@ def test_existing_skills_orders_by_name(session):
 
 def test_existing_skills_is_empty_initially(session):
     assert existing_skills(session) == []
+
+
+def _scripted(*keys):
+    responses = iter(keys)
+
+    def input_fn(prompt=""):
+        return next(responses)
+
+    return input_fn
+
+
+def test_loop_adds_a_skill_with_the_chosen_band(session):
+    counts = run_skill_entry_loop(session, input_fn=_scripted("docker", "w", ""))
+
+    assert counts["added"] == 1
+    skills = existing_skills(session)
+    assert len(skills) == 1
+    assert skills[0].name == "docker"
+    assert skills[0].proficiency == 60.0
+    assert skills[0].source == "user_confirmed"
+
+
+def test_loop_adds_several_skills(session):
+    counts = run_skill_entry_loop(
+        session, input_fn=_scripted("docker", "w", "python", "s", "")
+    )
+
+    assert counts["added"] == 2
+    assert [s.name for s in existing_skills(session)] == ["docker", "python"]
+
+
+def test_loop_exits_immediately_on_a_blank_name(session):
+    counts = run_skill_entry_loop(session, input_fn=_scripted(""))
+
+    assert counts["added"] == 0
+    assert existing_skills(session) == []
+
+
+def test_loop_treats_a_whitespace_only_name_as_blank(session):
+    counts = run_skill_entry_loop(session, input_fn=_scripted("   "))
+
+    assert counts["added"] == 0
+    assert existing_skills(session) == []
+
+
+def test_loop_reprompts_on_an_unrecognized_band(session):
+    counts = run_skill_entry_loop(session, input_fn=_scripted("docker", "z", "w", ""))
+
+    assert counts["added"] == 1
+    assert existing_skills(session)[0].proficiency == 60.0
+
+
+def test_loop_updates_an_existing_skill_when_confirmed(session):
+    add_skill(session, "docker", "f")
+
+    counts = run_skill_entry_loop(session, input_fn=_scripted("Docker", "y", "s", ""))
+
+    assert counts["updated"] == 1
+    skills = existing_skills(session)
+    assert len(skills) == 1
+    assert skills[0].proficiency == 85.0
+
+
+def test_loop_leaves_an_existing_skill_alone_when_declined(session):
+    add_skill(session, "docker", "f")
+
+    counts = run_skill_entry_loop(session, input_fn=_scripted("docker", "n", ""))
+
+    assert counts["unchanged"] == 1
+    assert existing_skills(session)[0].proficiency == 35.0
+
+
+def test_loop_persists_entries_made_before_an_abort(session):
+    def input_fn(prompt=""):
+        responses = input_fn.responses
+        if not responses:
+            raise EOFError
+        return responses.pop(0)
+
+    input_fn.responses = ["docker", "w", "python", "s"]
+
+    counts = run_skill_entry_loop(session, input_fn=input_fn)
+
+    assert counts["added"] == 2
+    assert [s.name for s in existing_skills(session)] == ["docker", "python"]
+
+
+def test_loop_aborting_during_the_band_prompt_keeps_earlier_skills(session):
+    def input_fn(prompt=""):
+        responses = input_fn.responses
+        if not responses:
+            raise KeyboardInterrupt
+        return responses.pop(0)
+
+    input_fn.responses = ["docker", "w", "python"]
+
+    counts = run_skill_entry_loop(session, input_fn=input_fn)
+
+    assert counts["added"] == 1
+    assert [s.name for s in existing_skills(session)] == ["docker"]
