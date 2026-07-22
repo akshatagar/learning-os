@@ -71,9 +71,13 @@ def _build_generation_prompt(concept_names: list[str], count: int) -> str:
         f"Propose {count} distinct project ideas that COMBINE these concepts. "
         "Every idea must genuinely use at least two of them together. Do not "
         "propose ideas that depend on concepts absent from the list above.\n\n"
-        "For each idea give a short title, a two-to-three sentence description "
-        "of what would be built, and the list of technical skills needed to "
-        "build it."
+        "For each idea give a short title and a two-to-three sentence "
+        "description of what would be built.\n\n"
+        "Also list the practical skills someone needs to BUILD it: programming "
+        "languages, libraries, frameworks, and engineering practices, such as "
+        "Python, PyTorch, Docker, SQL, or API design. Do NOT list the concepts "
+        "above as skills - those are what the project is about, not what is "
+        "needed to build it."
     )
 
 

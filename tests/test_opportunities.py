@@ -221,6 +221,42 @@ def test_generation_schema_is_object_wrapped():
     assert GENERATION_SCHEMA["properties"]["ideas"]["type"] == "array"
 
 
+def test_build_generation_prompt_distinguishes_skills_from_concepts():
+    prompt = _build_generation_prompt(["Beam search"], 2)
+
+    assert "Do NOT list the concepts above as skills" in prompt
+
+
+def test_call_ollama_generate_asks_for_skills_not_the_concepts_back():
+    """Live: required_skills must name buildable tools, not echo the concepts.
+
+    The first implementation returned things like "Transformer architecture"
+    and "Sinusoidal positional encoding" as required skills. Those are what
+    the project is about, not what builds it, and 7c matches required_skills
+    against a skills table holding entries like "python" and "docker" — so
+    echoing concepts back would make every skill_match_pct near zero.
+
+    An exact-match check against the passed concepts is too weak: the model
+    returned "Transformer architecture" for a call that did not include that
+    concept, so the echo slips through. This instead requires at least one
+    recognizable implementation technology across all ideas.
+    """
+    ideas = call_ollama_generate(["KV cache", "beam search", "attention mechanism"], 3)
+
+    implementation_vocabulary = {
+        "python", "pytorch", "tensorflow", "jax", "numpy", "scipy", "pandas",
+        "huggingface", "hugging face", "transformers", "cuda", "docker",
+        "git", "linux", "c++", "rust", "javascript", "sql", "fastapi", "flask",
+    }
+    all_skills = [s.lower() for idea in ideas for s in idea["required_skills"]]
+
+    assert all_skills, "no required_skills returned at all"
+    assert any(
+        any(tool in skill for tool in implementation_vocabulary)
+        for skill in all_skills
+    ), f"no buildable technology named, only concepts: {all_skills}"
+
+
 def test_call_ollama_generate_returns_schema_valid_ideas():
     """Live round-trip against a running Ollama.
 
