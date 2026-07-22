@@ -15,6 +15,12 @@ from opportunities.generate import (
     generate_ideas,
     sample_concepts,
 )
+from opportunities.review import (
+    format_opportunity,
+    pending_opportunities,
+    resolve_opportunity,
+    run_idea_review_loop,
+)
 from storage.models import Concept, Opportunity
 
 
@@ -211,3 +217,128 @@ def test_call_ollama_generate_returns_schema_valid_ideas():
         assert isinstance(idea["title"], str) and idea["title"]
         assert isinstance(idea["description"], str) and idea["description"]
         assert isinstance(idea["required_skills"], list)
+
+
+def _scripted(*keys):
+    responses = iter(keys)
+
+    def input_fn(prompt=""):
+        return next(responses)
+
+    return input_fn
+
+
+def _add_idea(session, title="An idea", status="generated"):
+    opportunity = Opportunity(
+        title=title,
+        description="Does a thing.",
+        required_skills=json.dumps(["python"]),
+        source_concepts=json.dumps([]),
+        status=status,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(opportunity)
+    session.commit()
+    return opportunity
+
+
+def test_pending_opportunities_returns_only_generated(session):
+    _add_idea(session, "pending one")
+    _add_idea(session, "already approved", status="approved")
+
+    assert [o.title for o in pending_opportunities(session)] == ["pending one"]
+
+
+def test_resolve_opportunity_sets_status(session):
+    idea = _add_idea(session)
+
+    assert resolve_opportunity(session, idea, "approve") == "approved"
+    assert idea.status == "approved"
+
+
+def test_resolve_opportunity_rejects(session):
+    idea = _add_idea(session)
+
+    assert resolve_opportunity(session, idea, "reject") == "rejected"
+
+
+def test_resolve_opportunity_raises_for_an_unknown_action(session):
+    idea = _add_idea(session)
+
+    with pytest.raises(ValueError, match="approval action"):
+        resolve_opportunity(session, idea, "maybe")
+
+
+def test_format_opportunity_shows_title_concepts_and_skills(session):
+    idea = _add_idea(session, "Local RAG harness")
+
+    rendered = format_opportunity(idea, ["RAG", "reranking"], 1, 3)
+
+    assert "Local RAG harness" in rendered
+    assert "RAG" in rendered
+    assert "reranking" in rendered
+    assert "python" in rendered
+    assert "1/3" in rendered
+
+
+def test_loop_applies_each_action(session):
+    _add_idea(session, "one")
+    _add_idea(session, "two")
+    _add_idea(session, "three")
+
+    counts = run_idea_review_loop(session, input_fn=_scripted("a", "r", "s"))
+
+    assert counts == {"approved": 1, "rejected": 1, "skipped": 1}
+    assert [o.status for o in _all_opportunities(session)] == [
+        "approved", "rejected", "generated",
+    ]
+
+
+def test_loop_reprompts_on_an_unrecognized_key(session):
+    _add_idea(session, "one")
+
+    counts = run_idea_review_loop(session, input_fn=_scripted("zzz", "a"))
+
+    assert counts["approved"] == 1
+
+
+def test_loop_quit_leaves_later_ideas_pending(session):
+    _add_idea(session, "one")
+    _add_idea(session, "two")
+
+    counts = run_idea_review_loop(session, input_fn=_scripted("a", "q"))
+
+    assert counts["approved"] == 1
+    assert [o.status for o in _all_opportunities(session)] == ["approved", "generated"]
+
+
+def test_loop_persists_decisions_made_before_an_abort(session):
+    _add_idea(session, "one")
+    _add_idea(session, "two")
+
+    def input_fn(prompt=""):
+        if not input_fn.responses:
+            raise KeyboardInterrupt
+        return input_fn.responses.pop(0)
+
+    input_fn.responses = ["a"]
+
+    counts = run_idea_review_loop(session, input_fn=input_fn)
+
+    assert counts["approved"] == 1
+    assert [o.status for o in _all_opportunities(session)] == ["approved", "generated"]
+
+
+def test_loop_reports_nothing_pending(session):
+    counts = run_idea_review_loop(session, input_fn=_scripted())
+
+    assert counts == {"approved": 0, "rejected": 0, "skipped": 0}
+
+
+def test_loop_includes_leftovers_from_an_earlier_run(session):
+    _add_idea(session, "old leftover")
+    _add_idea(session, "freshly generated")
+
+    counts = run_idea_review_loop(session, input_fn=_scripted("a", "a"))
+
+    assert counts["approved"] == 2
