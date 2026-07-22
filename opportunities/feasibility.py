@@ -100,3 +100,32 @@ def call_ollama_match(skills: list[str], required: list[str]) -> list[dict]:
         }
         for match in matches
     ]
+
+
+def score_opportunity(
+    session, opportunity, skills: list[str], match_fn=call_ollama_match
+) -> float | None:
+    required = json.loads(opportunity.required_skills or "[]")
+    if not required:
+        return None
+
+    matches = match_fn(skills, required)
+    # The model's reply is a lookup table, never the list being iterated: a
+    # requirement it omits must still count, and one it invents must not.
+    claimed = {match["requirement"]: match["covered_by"] for match in matches}
+    known = {name.lower() for name in skills}
+
+    missing = []
+    covered_count = 0
+    for requirement in required:
+        covered_by = claimed.get(requirement)
+        if covered_by is not None and covered_by.strip().lower() in known:
+            covered_count += 1
+        else:
+            missing.append(requirement)
+
+    pct = round(covered_count / len(required) * 100, 1)
+    opportunity.skill_match_pct = pct
+    opportunity.missing_skills = json.dumps(missing)
+    session.commit()
+    return pct

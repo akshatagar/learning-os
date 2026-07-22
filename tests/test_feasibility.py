@@ -7,6 +7,7 @@ from opportunities.feasibility import (
     _build_match_prompt,
     _clean_covered_by,
     call_ollama_match,
+    score_opportunity,
     skill_names,
     unscored_approved,
 )
@@ -134,3 +135,112 @@ def test_call_ollama_match_never_names_a_skill_outside_the_list():
 
     named = [m["covered_by"] for m in matches if m["covered_by"] is not None]
     assert all(name in skills for name in named), f"invented a skill: {named}"
+
+
+def _fake_match(mapping):
+    """Return a match_fn answering from `mapping`: requirement -> covering skill."""
+    def match_fn(skills, required):
+        return [
+            {"requirement": name, "covered_by": mapping.get(name)}
+            for name in required
+        ]
+
+    return match_fn
+
+
+def test_score_opportunity_computes_percentage_and_missing(session):
+    opportunity = _add_opportunity(
+        session, required=("Python", "PyTorch", "SQL")
+    )
+    match_fn = _fake_match({"Python": "Python", "PyTorch": "PyTorch"})
+
+    pct = score_opportunity(
+        session, opportunity, ["Python", "PyTorch"], match_fn=match_fn
+    )
+
+    assert pct == 66.7
+    assert opportunity.skill_match_pct == 66.7
+    assert json.loads(opportunity.missing_skills) == ["SQL"]
+
+
+def test_score_opportunity_handles_full_coverage(session):
+    opportunity = _add_opportunity(session, required=("Python", "Docker"))
+    match_fn = _fake_match({"Python": "Python", "Docker": "Docker"})
+
+    pct = score_opportunity(
+        session, opportunity, ["Python", "Docker"], match_fn=match_fn
+    )
+
+    assert pct == 100.0
+    assert json.loads(opportunity.missing_skills) == []
+
+
+def test_score_opportunity_matches_skill_names_case_insensitively(session):
+    opportunity = _add_opportunity(session, required=("Python",))
+    match_fn = _fake_match({"Python": "python"})
+
+    pct = score_opportunity(session, opportunity, ["Python"], match_fn=match_fn)
+
+    assert pct == 100.0
+
+
+def test_score_opportunity_rejects_a_skill_outside_the_table(session):
+    """Rule 2 of spec section 6: hallucinated coverage counts as missing.
+
+    The model claims Rust covers the requirement, but the user has no Rust.
+    Trusting it would credit the user with a skill they do not have.
+    """
+    opportunity = _add_opportunity(session, required=("systems programming",))
+    match_fn = _fake_match({"systems programming": "Rust"})
+
+    pct = score_opportunity(session, opportunity, ["Python"], match_fn=match_fn)
+
+    assert pct == 0.0
+    assert json.loads(opportunity.missing_skills) == ["systems programming"]
+
+
+def test_score_opportunity_counts_omitted_requirements_as_missing(session):
+    """Rule 1 of spec section 6: iterate the stored requirements.
+
+    The model answers about only one of two requirements. The silent one must
+    count as missing rather than vanishing from the denominator, which would
+    otherwise report 100%.
+    """
+    opportunity = _add_opportunity(session, required=("Python", "SQL"))
+
+    def match_fn(skills, required):
+        return [{"requirement": "Python", "covered_by": "Python"}]
+
+    pct = score_opportunity(session, opportunity, ["Python"], match_fn=match_fn)
+
+    assert pct == 50.0
+    assert json.loads(opportunity.missing_skills) == ["SQL"]
+
+
+def test_score_opportunity_ignores_invented_requirements(session):
+    """Rule 1 again, from the other side: extra requirements are dropped."""
+    opportunity = _add_opportunity(session, required=("Python",))
+
+    def match_fn(skills, required):
+        return [
+            {"requirement": "Python", "covered_by": "Python"},
+            {"requirement": "Kubernetes", "covered_by": None},
+        ]
+
+    pct = score_opportunity(session, opportunity, ["Python"], match_fn=match_fn)
+
+    assert pct == 100.0
+    assert json.loads(opportunity.missing_skills) == []
+
+
+def test_score_opportunity_skips_a_row_with_no_required_skills(session):
+    """No denominator exists, so 0% would assert something untrue."""
+    opportunity = _add_opportunity(session, required=())
+
+    pct = score_opportunity(
+        session, opportunity, ["Python"], match_fn=_fake_match({})
+    )
+
+    assert pct is None
+    assert opportunity.skill_match_pct is None
+    assert opportunity.missing_skills is None
