@@ -12,6 +12,7 @@ class GapResult:
     present: list[str]
     weak: list[str]
     missing: list[str]
+    scores: dict[str, float]
 
 
 def concept_gaps(
@@ -25,14 +26,17 @@ def concept_gaps(
     present: list[str] = []
     weak: list[str] = []
     missing: list[str] = []
+    scores: dict[str, float] = {}
 
     for requirement in requirements:
         if collection.count() == 0:
+            scores[requirement] = 0.0
             missing.append(requirement)
             continue
 
         results = collection.query(query_texts=[requirement], n_results=1)
         similarity = 1 - results["distances"][0][0]
+        scores[requirement] = similarity
         if similarity < similarity_threshold:
             missing.append(requirement)
             continue
@@ -49,4 +53,4 @@ def concept_gaps(
         else:
             present.append(requirement)
 
-    return GapResult(present=present, weak=weak, missing=missing)
+    return GapResult(present=present, weak=weak, missing=missing, scores=scores)

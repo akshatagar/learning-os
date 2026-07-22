@@ -121,13 +121,18 @@ def test_concept_gaps_returns_all_missing_for_an_empty_collection(session, colle
         session, collection, _goal(["self-attention", "beam search"])
     )
 
-    assert result == GapResult(present=[], weak=[], missing=["self-attention", "beam search"])
+    assert result == GapResult(
+        present=[],
+        weak=[],
+        missing=["self-attention", "beam search"],
+        scores={"self-attention": 0.0, "beam search": 0.0},
+    )
 
 
 def test_concept_gaps_returns_empty_lists_for_a_goal_with_no_requirements(session, collection):
     result = concept_gaps(session, collection, _goal([]))
 
-    assert result == GapResult(present=[], weak=[], missing=[])
+    assert result == GapResult(present=[], weak=[], missing=[], scores={})
 
 
 def test_concept_gaps_needs_the_expansion_to_match_an_acronym(session, collection):
@@ -172,3 +177,22 @@ def test_concept_gaps_raises_when_a_chroma_hit_has_no_sqlite_row(session, collec
 
     with pytest.raises(ValueError):
         concept_gaps(session, collection, _goal(["beam search"]))
+
+
+def test_concept_gaps_scores_cover_every_requirement(session, collection):
+    collection.add(ids=["1"], documents=["Self-attention layers"])
+    session.add(Concept(id=1, name="Self-attention layers", confidence_score=0.9))
+    session.commit()
+
+    result = concept_gaps(
+        session, collection, _goal(["self-attention", "MoE mixture of experts"])
+    )
+
+    assert set(result.scores) == {"self-attention", "MoE mixture of experts"}
+    assert result.scores["self-attention"] > result.scores["MoE mixture of experts"]
+
+
+def test_concept_gaps_scores_are_zero_for_empty_collection(session, collection):
+    result = concept_gaps(session, collection, _goal(["anything", "else"]))
+
+    assert result.scores == {"anything": 0.0, "else": 0.0}
