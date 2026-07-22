@@ -31,17 +31,25 @@ def sample_concepts(session, n=DEFAULT_SAMPLE_SIZE, rng=random) -> list[Concept]
     return rng.sample(eligible, n)
 
 
-GENERATION_SCHEMA = {
-    "type": "array",
-    "items": {
-        "type": "object",
-        "properties": {
-            "title": {"type": "string"},
-            "description": {"type": "string"},
-            "required_skills": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["title", "description", "required_skills"],
+_IDEA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "required_skills": {"type": "array", "items": {"type": "string"}},
     },
+    "required": ["title", "description", "required_skills"],
+}
+
+# The idea array is wrapped in an object rather than being the top-level schema.
+# A top-level array is satisfied by `[]`, so the constrained decoder can emit `]`
+# immediately as the shortest legal completion — measured, it did so on every
+# run, for every concept set and idea count tried. Requiring an "ideas" key
+# forces it past the opening structure and into generating items.
+GENERATION_SCHEMA = {
+    "type": "object",
+    "properties": {"ideas": {"type": "array", "items": _IDEA_SCHEMA}},
+    "required": ["ideas"],
 }
 
 
@@ -77,7 +85,7 @@ def call_ollama_generate(concept_names: list[str], count: int) -> list[dict]:
         ],
         format=GENERATION_SCHEMA,
     )
-    return json.loads(response["message"]["content"])
+    return json.loads(response["message"]["content"])["ideas"]
 
 
 def build_sample_node(session, rng=random):

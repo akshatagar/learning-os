@@ -8,6 +8,7 @@ from sqlalchemy import select
 from opportunities.generate import (
     DEFAULT_IDEA_COUNT,
     DEFAULT_SAMPLE_SIZE,
+    GENERATION_SCHEMA,
     HIGH_CONFIDENCE,
     _build_generation_prompt,
     build_generation_graph,
@@ -207,12 +208,31 @@ def test_build_generation_graph_has_expected_nodes(session):
     assert set(app.get_graph().nodes) >= {"sample", "generate", "write_opportunities"}
 
 
+def test_generation_schema_is_object_wrapped():
+    """A top-level array schema lets the model satisfy it with `[]`.
+
+    An empty array is always schema-valid, so a constrained decoder can emit
+    `]` immediately as the shortest legal completion. Wrapping the array in an
+    object with a required key forces it past the opening structure and into
+    generating items. Measured: the array form returned `[ ]` on every run.
+    """
+    assert GENERATION_SCHEMA["type"] == "object"
+    assert GENERATION_SCHEMA["required"] == ["ideas"]
+    assert GENERATION_SCHEMA["properties"]["ideas"]["type"] == "array"
+
+
 def test_call_ollama_generate_returns_schema_valid_ideas():
-    """Live round-trip against a running Ollama."""
-    ideas = call_ollama_generate(["retrieval augmented generation", "vector database"], 2)
+    """Live round-trip against a running Ollama.
+
+    Asks for 3 ideas and requires at least 2. An earlier version asked for 2
+    and accepted 1, which passed while the real CLI run produced zero.
+    """
+    ideas = call_ollama_generate(
+        ["KV cache", "beam search", "attention mechanism"], 3
+    )
 
     assert isinstance(ideas, list)
-    assert len(ideas) >= 1
+    assert len(ideas) >= 2
     for idea in ideas:
         assert isinstance(idea["title"], str) and idea["title"]
         assert isinstance(idea["description"], str) and idea["description"]
