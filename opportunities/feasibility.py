@@ -129,3 +129,30 @@ def score_opportunity(
     opportunity.missing_skills = json.dumps(missing)
     session.commit()
     return pct
+
+
+def score_all(session, match_fn=call_ollama_match) -> dict[str, int]:
+    counts = {"scored": 0, "skipped": 0}
+    skills = skill_names(session)
+    rows = unscored_approved(session)
+    if not rows:
+        print("No approved opportunities awaiting scoring.")
+        return counts
+
+    total = len(rows)
+    print(f"Scoring {total} approved opportunities against {len(skills)} skills...")
+    for position, opportunity in enumerate(rows, start=1):
+        pct = score_opportunity(session, opportunity, skills, match_fn=match_fn)
+        if pct is None:
+            counts["skipped"] += 1
+            print(
+                f"  [{position}/{total}] {opportunity.title}"
+                " - skipped, no required skills"
+            )
+            continue
+        counts["scored"] += 1
+        missing = json.loads(opportunity.missing_skills)
+        detail = f"missing {', '.join(missing)}" if missing else "fully covered"
+        print(f"  [{position}/{total}] {opportunity.title} - {pct}% ({detail})")
+
+    return counts

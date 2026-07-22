@@ -7,6 +7,7 @@ from opportunities.feasibility import (
     _build_match_prompt,
     _clean_covered_by,
     call_ollama_match,
+    score_all,
     score_opportunity,
     skill_names,
     unscored_approved,
@@ -244,3 +245,71 @@ def test_score_opportunity_skips_a_row_with_no_required_skills(session):
     assert pct is None
     assert opportunity.skill_match_pct is None
     assert opportunity.missing_skills is None
+
+
+def test_score_all_scores_every_unscored_approved_row(session):
+    _add_skills(session, "Python", "Docker")
+    _add_opportunity(session, "one", required=("Python",))
+    _add_opportunity(session, "two", required=("Python", "SQL"))
+    match_fn = _fake_match({"Python": "Python"})
+
+    counts = score_all(session, match_fn=match_fn)
+
+    assert counts == {"scored": 2, "skipped": 0}
+    assert unscored_approved(session) == []
+
+
+def test_score_all_raises_before_any_call_when_no_skills_exist(session):
+    _add_opportunity(session, required=("Python",))
+
+    def match_fn(skills, required):
+        raise AssertionError("must not reach the model")
+
+    with pytest.raises(ValueError, match="add-skills"):
+        score_all(session, match_fn=match_fn)
+
+
+def test_score_all_counts_skipped_rows(session):
+    _add_skills(session, "Python")
+    _add_opportunity(session, "no requirements", required=())
+
+    counts = score_all(session, match_fn=_fake_match({}))
+
+    assert counts == {"scored": 0, "skipped": 1}
+
+
+def test_score_all_ignores_rows_that_are_already_scored(session):
+    _add_skills(session, "Python")
+    _add_opportunity(session, "done", required=("Python",), skill_match_pct=42.0)
+
+    counts = score_all(session, match_fn=_fake_match({"Python": "Python"}))
+
+    assert counts == {"scored": 0, "skipped": 0}
+
+
+def test_score_all_reports_nothing_to_score(session):
+    _add_skills(session, "Python")
+
+    counts = score_all(session, match_fn=_fake_match({}))
+
+    assert counts == {"scored": 0, "skipped": 0}
+
+
+def test_score_all_keeps_scores_written_before_a_failure(session):
+    """Commit is per row, so an abort mid-run does not lose earlier work."""
+    _add_skills(session, "Python")
+    first = _add_opportunity(session, "one", required=("Python",))
+    _add_opportunity(session, "two", required=("Python",))
+
+    calls = {"n": 0}
+
+    def match_fn(skills, required):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("model exploded")
+        return [{"requirement": "Python", "covered_by": "Python"}]
+
+    with pytest.raises(RuntimeError, match="model exploded"):
+        score_all(session, match_fn=match_fn)
+
+    assert first.skill_match_pct == 100.0
