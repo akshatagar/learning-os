@@ -9,6 +9,10 @@ from opportunities.generate import (
     DEFAULT_IDEA_COUNT,
     DEFAULT_SAMPLE_SIZE,
     HIGH_CONFIDENCE,
+    _build_generation_prompt,
+    build_generation_graph,
+    call_ollama_generate,
+    generate_ideas,
     sample_concepts,
 )
 from storage.models import Concept, Opportunity
@@ -94,3 +98,116 @@ def test_sample_concepts_is_deterministic_under_a_seeded_rng(session):
     second = [c.id for c in sample_concepts(session, 5, rng=random.Random(0))]
 
     assert first == second
+
+
+def _fake_generate(ideas):
+    def generate_fn(concept_names, count):
+        return ideas
+
+    return generate_fn
+
+
+IDEAS = [
+    {
+        "title": "Local RAG eval harness",
+        "description": "Build a harness.",
+        "required_skills": ["python", "chromadb"],
+    },
+    {
+        "title": "KV cache visualiser",
+        "description": "Render cache growth.",
+        "required_skills": ["python"],
+    },
+]
+
+
+def test_generate_ideas_writes_one_opportunity_per_idea(session):
+    _add_concepts(session, 6)
+
+    created = generate_ideas(session, generate_fn=_fake_generate(IDEAS))
+
+    assert len(created) == 2
+    assert [o.title for o in created] == ["Local RAG eval harness", "KV cache visualiser"]
+    assert all(o.status == "generated" for o in created)
+
+
+def test_generate_ideas_stores_skills_concepts_and_timestamp(session):
+    _add_concepts(session, 6)
+
+    created = generate_ideas(session, sample_size=4, generate_fn=_fake_generate(IDEAS))
+
+    first = created[0]
+    assert json.loads(first.required_skills) == ["python", "chromadb"]
+    assert len(json.loads(first.source_concepts)) == 4
+    assert first.created_at is not None
+
+
+def test_generate_ideas_leaves_7c_columns_null(session):
+    _add_concepts(session, 6)
+
+    created = generate_ideas(session, generate_fn=_fake_generate(IDEAS))
+
+    assert all(o.skill_match_pct is None for o in created)
+    assert all(o.missing_skills is None for o in created)
+
+
+def test_generate_ideas_passes_only_sampled_names_to_the_model(session):
+    _add_concepts(session, 6)
+    seen = {}
+
+    def generate_fn(concept_names, count):
+        seen["names"] = concept_names
+        seen["count"] = count
+        return IDEAS
+
+    generate_ideas(session, sample_size=3, count=2, generate_fn=generate_fn)
+
+    assert len(seen["names"]) == 3
+    assert seen["count"] == 2
+    assert all(isinstance(name, str) for name in seen["names"])
+
+
+def test_generate_ideas_writes_nothing_when_generation_fails(session):
+    _add_concepts(session, 6)
+
+    def generate_fn(concept_names, count):
+        raise RuntimeError("model exploded")
+
+    with pytest.raises(RuntimeError, match="model exploded"):
+        generate_ideas(session, generate_fn=generate_fn)
+
+    assert _all_opportunities(session) == []
+
+
+def test_generate_ideas_accepts_fewer_ideas_than_requested(session):
+    _add_concepts(session, 6)
+
+    created = generate_ideas(session, count=5, generate_fn=_fake_generate(IDEAS[:1]))
+
+    assert len(created) == 1
+
+
+def test_build_generation_prompt_lists_the_concepts_and_count():
+    prompt = _build_generation_prompt(["RAG", "reranking"], 3)
+
+    assert "RAG" in prompt
+    assert "reranking" in prompt
+    assert "3" in prompt
+
+
+def test_build_generation_graph_has_expected_nodes(session):
+    app = build_generation_graph(session)
+
+    assert set(app.get_graph().nodes) >= {"sample", "generate", "write_opportunities"}
+
+
+def test_call_ollama_generate_returns_schema_valid_ideas():
+    """Live round-trip against a running Ollama."""
+    ideas = call_ollama_generate(["retrieval augmented generation", "vector database"], 2)
+
+    assert isinstance(ideas, list)
+    assert len(ideas) >= 1
+    for idea in ideas:
+        assert isinstance(idea["title"], str) and idea["title"]
+        assert isinstance(idea["description"], str) and idea["description"]
+        assert isinstance(idea["required_skills"], list)
