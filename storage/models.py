@@ -94,3 +94,6 @@ class Opportunity(Base):
     skill_match_pct: Mapped[float | None]
     missing_skills: Mapped[str | None]
     status: Mapped[str] = mapped_column(default="generated")
+    required_skills: Mapped[str | None]
+    created_at: Mapped[datetime | None]
+    source_concepts: Mapped[str | None]
