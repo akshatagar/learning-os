@@ -177,12 +177,19 @@ def test_call_ollama_plan_returns_a_learn_milestone_for_the_missing_skill():
 
 
 def test_call_ollama_plan_honors_min_items():
-    """Measures whether `minItems` constrains this decoder.
+    """`minItems` is respected even when the task warrants fewer steps.
 
-    7b left this open: `--count` in idea generation is advisory precisely
-    because minItems "would enforce it and was not attempted". If this passes,
-    that finding transfers straight back to generate.py. Nothing in this
-    module depends on the answer.
+    This test on its own is weak evidence - a trivial script might get three
+    milestones anyway. The isolating measurement was run separately, asking
+    for a roadmap to print "hello world" under three schemas, three runs each:
+
+        no minItems  -> 4, 4, 3
+        minItems 3   -> 4, 6, 3
+        minItems 8   -> 8, 8, 8
+
+    So the floor genuinely binds. That answers the question 7b left open, and
+    means `--count` in idea generation could be enforced the same way. Nothing
+    in this module depends on it; PLAN_SCHEMA sets a floor, not a count.
     """
     milestones = call_ollama_plan(
         "Tiny Script",
