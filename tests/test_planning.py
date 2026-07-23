@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from opportunities.planning import unplanned_approved
 from storage.models import Opportunity
 
 
@@ -35,3 +36,20 @@ def test_execution_plan_defaults_to_null_and_stores_json(session):
 
     stored = json.loads(opportunity.execution_plan)
     assert stored[0]["kind"] == "learn"
+
+
+def test_unplanned_approved_returns_only_approved_scored_and_unplanned(session):
+    _add_opportunity(session, "ready")
+    _add_opportunity(session, "not approved", status="generated")
+    _add_opportunity(session, "rejected", status="rejected")
+    _add_opportunity(session, "not scored", skill_match_pct=None)
+    _add_opportunity(session, "already planned", execution_plan="[]")
+
+    assert [o.title for o in unplanned_approved(session)] == ["ready"]
+
+
+def test_unplanned_approved_is_oldest_first(session):
+    _add_opportunity(session, "first")
+    _add_opportunity(session, "second")
+
+    assert [o.title for o in unplanned_approved(session)] == ["first", "second"]
