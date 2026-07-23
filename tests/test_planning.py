@@ -5,6 +5,8 @@ import pytest
 from opportunities.planning import (
     PLAN_SCHEMA,
     _build_plan_prompt,
+    _normalize_milestone,
+    call_ollama_plan,
     unplanned_approved,
 )
 from storage.models import Opportunity
@@ -102,3 +104,86 @@ def test_build_plan_prompt_states_plainly_when_nothing_is_missing():
     prompt = _build_plan_prompt("X", "Y", ["Python"], [])
 
     assert "already have every skill" in prompt
+
+
+def test_normalize_milestone_keeps_learn_and_build():
+    learn = _normalize_milestone(
+        {"title": "Learn SQL", "kind": "learn", "detail": "Basics."}
+    )
+    build = _normalize_milestone(
+        {"title": "Build the API", "kind": "build", "detail": "Endpoints."}
+    )
+
+    assert learn["kind"] == "learn"
+    assert build["kind"] == "build"
+
+
+def test_normalize_milestone_coerces_an_unknown_kind_to_build():
+    """`enum` may not constrain this decoder, so a third category can arrive.
+
+    Coercing to "build" is the safe default: a mislabelled build step is a
+    cosmetic error, while an unrecognized kind would slip past the coverage
+    guard's `kind == "learn"` check and split the renderer's two cases.
+    """
+    for raw_kind in ["research", "LEARN ", "", None]:
+        milestone = _normalize_milestone(
+            {"title": "t", "kind": raw_kind, "detail": "d"}
+        )
+        assert milestone["kind"] in {"learn", "build"}
+
+    assert _normalize_milestone(
+        {"title": "t", "kind": "research", "detail": "d"}
+    )["kind"] == "build"
+    assert _normalize_milestone(
+        {"title": "t", "kind": "LEARN ", "detail": "d"}
+    )["kind"] == "learn"
+
+
+def test_normalize_milestone_strips_whitespace_and_tolerates_missing_keys():
+    milestone = _normalize_milestone({"title": "  Learn SQL  ", "kind": "learn"})
+
+    assert milestone["title"] == "Learn SQL"
+    assert milestone["detail"] == ""
+
+
+def test_call_ollama_plan_returns_a_learn_milestone_for_the_missing_skill():
+    """Live round-trip. The acceptance bar for the prompt.
+
+    The coverage guard in ensure_missing_covered will backfill a blunt
+    "Learn SQL" if the model omits it, so this test is what tells us whether
+    the guard is a safety net or the primary mechanism.
+    """
+    milestones = call_ollama_plan(
+        "Database Query Assistant",
+        "A tool that answers plain-English questions about a SQL database "
+        "by generating and running queries.",
+        ["Python", "SQL", "PyTorch"],
+        ["SQL"],
+    )
+
+    assert len(milestones) >= 3
+    assert all(m["kind"] in {"learn", "build"} for m in milestones)
+    assert all(m["title"] for m in milestones)
+
+    learn_text = " ".join(
+        f"{m['title']} {m['detail']}" for m in milestones if m["kind"] == "learn"
+    ).lower()
+    assert "sql" in learn_text
+
+
+def test_call_ollama_plan_honors_min_items():
+    """Measures whether `minItems` constrains this decoder.
+
+    7b left this open: `--count` in idea generation is advisory precisely
+    because minItems "would enforce it and was not attempted". If this passes,
+    that finding transfers straight back to generate.py. Nothing in this
+    module depends on the answer.
+    """
+    milestones = call_ollama_plan(
+        "Tiny Script",
+        "A one-file script that prints the current time.",
+        ["Python"],
+        [],
+    )
+
+    assert len(milestones) >= 3

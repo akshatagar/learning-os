@@ -76,3 +76,37 @@ def _build_plan_prompt(
         "each milestone is doable once the ones before it are done.\n\n"
         "Do not introduce technologies beyond the skills listed above."
     )
+
+
+def _normalize_milestone(raw: dict) -> dict:
+    """Coerce one raw milestone into the three-field contract.
+
+    `kind` is typed as an enum in PLAN_SCHEMA, but 7b and 7c both found that a
+    schema-valid answer can still be wrong - a top-level array returned `[]`,
+    and a ["string","null"] field returned the text "null". Anything that is
+    not exactly "learn" becomes "build" here, so no third category reaches the
+    coverage guard or the renderer.
+    """
+    kind = str(raw.get("kind") or "").strip().lower()
+    return {
+        "title": str(raw.get("title") or "").strip(),
+        "kind": "learn" if kind == "learn" else "build",
+        "detail": str(raw.get("detail") or "").strip(),
+    }
+
+
+def call_ollama_plan(
+    title: str, description: str, required: list[str], missing: list[str]
+) -> list[dict]:
+    response = ollama.chat(
+        model="qwen2.5:7b",
+        messages=[
+            {
+                "role": "user",
+                "content": _build_plan_prompt(title, description, required, missing),
+            }
+        ],
+        format=PLAN_SCHEMA,
+    )
+    milestones = json.loads(response["message"]["content"])["milestones"]
+    return [_normalize_milestone(milestone) for milestone in milestones]
