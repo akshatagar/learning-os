@@ -97,3 +97,4 @@ class Opportunity(Base):
     required_skills: Mapped[str | None]
     created_at: Mapped[datetime | None]
     source_concepts: Mapped[str | None]
+    execution_plan: Mapped[str | None]
