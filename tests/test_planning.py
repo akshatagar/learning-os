@@ -8,7 +8,9 @@ from opportunities.planning import (
     _normalize_milestone,
     call_ollama_plan,
     ensure_missing_covered,
+    format_plan,
     plan_opportunity,
+    show_plan,
     unplanned_approved,
 )
 from storage.models import Opportunity
@@ -319,6 +321,61 @@ def test_plan_opportunity_raises_on_an_empty_reply_and_writes_nothing(session):
         plan_opportunity(session, opportunity, plan_fn=_fake_plan([]))
 
     assert opportunity.execution_plan is None
+
+
+def test_format_plan_numbers_milestones_and_tags_their_kind(session):
+    opportunity = _add_opportunity(session, "Query Assistant")
+    milestones = [
+        _milestone("Learn SQL", kind="learn", detail="Joins and aggregates."),
+        _milestone("Build the API", detail="Expose one endpoint."),
+    ]
+
+    text = format_plan(opportunity, milestones)
+
+    assert "Query Assistant" in text
+    assert f"(id {opportunity.id})" in text
+    assert "1. [learn] Learn SQL" in text
+    assert "2. [build] Build the API" in text
+    assert "Joins and aggregates." in text
+
+
+def test_format_plan_is_ascii_only(session):
+    """Em-dashes and arrows garble in the Windows console.
+
+    Same constraint recommend/render.py was written under.
+    """
+    opportunity = _add_opportunity(session, "Query Assistant")
+    text = format_plan(opportunity, [_milestone("Build it", detail="Do it.")])
+
+    text.encode("ascii")
+
+
+def test_show_plan_renders_a_stored_plan(session):
+    opportunity = _add_opportunity(
+        session,
+        execution_plan=json.dumps(
+            [{"title": "Learn SQL", "kind": "learn", "detail": "Basics."}]
+        ),
+    )
+
+    text = show_plan(session, opportunity.id)
+
+    assert "1. [learn] Learn SQL" in text
+
+
+def test_show_plan_reports_an_unplanned_opportunity(session):
+    opportunity = _add_opportunity(session)
+
+    text = show_plan(session, opportunity.id)
+
+    assert "no plan yet" in text
+    assert "plan-opportunities" in text
+
+
+def test_show_plan_reports_a_missing_opportunity(session):
+    text = show_plan(session, 9999)
+
+    assert "No opportunity with id 9999" in text
 
 
 def test_plan_opportunity_checks_emptiness_before_the_coverage_guard(session):

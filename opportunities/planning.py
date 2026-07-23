@@ -161,3 +161,24 @@ def plan_opportunity(session, opportunity, plan_fn=call_ollama_plan) -> list[dic
     opportunity.execution_plan = json.dumps(milestones)
     session.commit()
     return milestones
+
+
+def format_plan(opportunity, milestones: list[dict]) -> str:
+    lines = ["", f"{opportunity.title}  (id {opportunity.id})", ""]
+    for index, milestone in enumerate(milestones, start=1):
+        lines.append(f"  {index}. [{milestone['kind']}] {milestone['title']}")
+        if milestone["detail"]:
+            lines.append(f"        {milestone['detail']}")
+    return "\n".join(lines)
+
+
+def show_plan(session, opportunity_id: int) -> str:
+    opportunity = session.get(Opportunity, opportunity_id)
+    if opportunity is None:
+        return f"No opportunity with id {opportunity_id}."
+    if opportunity.execution_plan is None:
+        return (
+            f"Opportunity {opportunity_id} has no plan yet - "
+            "run plan-opportunities."
+        )
+    return format_plan(opportunity, json.loads(opportunity.execution_plan))
