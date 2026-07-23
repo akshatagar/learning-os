@@ -3,6 +3,7 @@ import json
 import ollama
 from sqlalchemy import select
 
+from opportunities.feasibility import unscored_approved
 from storage.models import Opportunity
 
 
@@ -182,3 +183,27 @@ def show_plan(session, opportunity_id: int) -> str:
             "run plan-opportunities."
         )
     return format_plan(opportunity, json.loads(opportunity.execution_plan))
+
+
+def plan_all(session, plan_fn=call_ollama_plan) -> dict[str, int]:
+    unscored = unscored_approved(session)
+    counts = {"planned": 0, "unscored": len(unscored)}
+    if unscored:
+        print(
+            f"{len(unscored)} approved opportunities are not scored yet; "
+            "run score-opportunities first."
+        )
+
+    rows = unplanned_approved(session)
+    if not rows:
+        print("No scored opportunities awaiting a plan.")
+        return counts
+
+    total = len(rows)
+    print(f"Planning {total} approved opportunities...")
+    for position, opportunity in enumerate(rows, start=1):
+        milestones = plan_opportunity(session, opportunity, plan_fn=plan_fn)
+        counts["planned"] += 1
+        print(f"\n[{position}/{total}]{format_plan(opportunity, milestones)}")
+
+    return counts

@@ -9,6 +9,7 @@ from opportunities.planning import (
     call_ollama_plan,
     ensure_missing_covered,
     format_plan,
+    plan_all,
     plan_opportunity,
     show_plan,
     unplanned_approved,
@@ -391,3 +392,63 @@ def test_plan_opportunity_checks_emptiness_before_the_coverage_guard(session):
         plan_opportunity(session, opportunity, plan_fn=_fake_plan([]))
 
     assert opportunity.execution_plan is None
+
+
+def test_plan_all_plans_every_eligible_row(session):
+    _add_opportunity(session, "one", missing=[])
+    _add_opportunity(session, "two", missing=[])
+    plan_fn = _fake_plan([_milestone("Build it")])
+
+    counts = plan_all(session, plan_fn=plan_fn)
+
+    assert counts == {"planned": 2, "unscored": 0}
+    assert unplanned_approved(session) == []
+
+
+def test_plan_all_reports_approved_rows_that_are_not_scored_yet(session):
+    """The prerequisite has to be visible, not silent.
+
+    An unscored row planned anyway would produce a build-only roadmap that is
+    indistinguishable, in the output, from a correct plan for someone who
+    already has every skill.
+    """
+    _add_opportunity(session, "scored", missing=[])
+    _add_opportunity(session, "not scored", skill_match_pct=None)
+    plan_fn = _fake_plan([_milestone("Build it")])
+
+    counts = plan_all(session, plan_fn=plan_fn)
+
+    assert counts == {"planned": 1, "unscored": 1}
+
+
+def test_plan_all_ignores_rows_that_already_have_a_plan(session):
+    _add_opportunity(session, "done", execution_plan="[]")
+
+    def plan_fn(title, description, required, missing):
+        raise AssertionError("must not reach the model")
+
+    assert plan_all(session, plan_fn=plan_fn) == {"planned": 0, "unscored": 0}
+
+
+def test_plan_all_reports_nothing_to_plan(session, capsys):
+    plan_all(session, plan_fn=_fake_plan([_milestone("Build it")]))
+
+    assert "No scored opportunities awaiting a plan" in capsys.readouterr().out
+
+
+def test_plan_all_keeps_plans_written_before_a_failure(session):
+    """Commit is per row, so an abort mid-run does not lose earlier work."""
+    first = _add_opportunity(session, "one", missing=[])
+    _add_opportunity(session, "two", missing=[])
+    calls = {"n": 0}
+
+    def plan_fn(title, description, required, missing):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("model exploded")
+        return [_milestone("Build it")]
+
+    with pytest.raises(RuntimeError, match="model exploded"):
+        plan_all(session, plan_fn=plan_fn)
+
+    assert first.execution_plan is not None
