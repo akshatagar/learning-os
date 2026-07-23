@@ -7,6 +7,7 @@ from opportunities.planning import (
     _build_plan_prompt,
     _normalize_milestone,
     call_ollama_plan,
+    ensure_missing_covered,
     unplanned_approved,
 )
 from storage.models import Opportunity
@@ -187,3 +188,69 @@ def test_call_ollama_plan_honors_min_items():
     )
 
     assert len(milestones) >= 3
+
+
+def _milestone(title, kind="build", detail=""):
+    return {"title": title, "kind": kind, "detail": detail}
+
+
+def test_ensure_missing_covered_prepends_an_uncovered_skill():
+    """The guard iterates the STORED missing_skills, not the model's reply.
+
+    Same rule that made 7c correct. A fluent roadmap that quietly omits the
+    learning step is indistinguishable from a good one unless you happen to
+    remember what the score said.
+    """
+    milestones = [_milestone("Build the API")]
+
+    result = ensure_missing_covered(milestones, ["SQL"])
+
+    assert result[0]["kind"] == "learn"
+    assert result[0]["title"] == "Learn SQL"
+    assert result[1]["title"] == "Build the API"
+
+
+def test_ensure_missing_covered_does_not_duplicate_a_covered_skill():
+    milestones = [
+        _milestone("Work through a SQL tutorial", kind="learn"),
+        _milestone("Build the API"),
+    ]
+
+    result = ensure_missing_covered(milestones, ["SQL"])
+
+    assert result == milestones
+
+
+def test_ensure_missing_covered_matches_case_insensitively_in_the_detail():
+    milestones = [
+        _milestone("Get comfortable with queries", kind="learn",
+                   detail="Practice joins and aggregates in sql."),
+    ]
+
+    result = ensure_missing_covered(milestones, ["SQL"])
+
+    assert len(result) == 1
+
+
+def test_ensure_missing_covered_ignores_a_build_milestone_naming_the_skill():
+    """A build step that uses SQL is not a step that teaches it."""
+    milestones = [_milestone("Write the SQL query layer")]
+
+    result = ensure_missing_covered(milestones, ["SQL"])
+
+    assert len(result) == 2
+    assert result[0]["title"] == "Learn SQL"
+
+
+def test_ensure_missing_covered_preserves_stored_order_at_the_front():
+    milestones = [_milestone("Build it")]
+
+    result = ensure_missing_covered(milestones, ["SQL", "Docker"])
+
+    assert [m["title"] for m in result] == ["Learn SQL", "Learn Docker", "Build it"]
+
+
+def test_ensure_missing_covered_adds_nothing_when_nothing_is_missing():
+    milestones = [_milestone("Build it")]
+
+    assert ensure_missing_covered(milestones, []) == milestones

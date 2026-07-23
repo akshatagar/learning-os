@@ -110,3 +110,33 @@ def call_ollama_plan(
     )
     milestones = json.loads(response["message"]["content"])["milestones"]
     return [_normalize_milestone(milestone) for milestone in milestones]
+
+
+def ensure_missing_covered(milestones: list[dict], missing: list[str]) -> list[dict]:
+    """Guarantee every stored missing skill has a learn milestone.
+
+    The model's list is a proposal, never the list being iterated - a skill it
+    forgets must still appear. Generated milestones are blunt on purpose: they
+    read as an obvious fallback, and they are deterministic, so the guarantee
+    is testable without the model.
+    """
+    learn_text = [
+        f"{milestone['title']} {milestone['detail']}".lower()
+        for milestone in milestones
+        if milestone["kind"] == "learn"
+    ]
+
+    generated = [
+        {
+            "title": f"Learn {skill}",
+            "kind": "learn",
+            "detail": (
+                f"Get to working competence with {skill} before the build "
+                "milestones that depend on it."
+            ),
+        }
+        for skill in missing
+        if not any(skill.lower() in text for text in learn_text)
+    ]
+
+    return generated + milestones
