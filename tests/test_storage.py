@@ -27,7 +27,7 @@ EXPECTED_TABLES = {
     },
     "opportunities": {
         "id", "title", "description", "skill_match_pct", "missing_skills", "status",
-        "required_skills", "created_at", "source_concepts",
+        "required_skills", "created_at", "source_concepts", "execution_plan",
     },
 }
 
