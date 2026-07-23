@@ -8,6 +8,7 @@ from opportunities.planning import (
     _normalize_milestone,
     call_ollama_plan,
     ensure_missing_covered,
+    plan_opportunity,
     unplanned_approved,
 )
 from storage.models import Opportunity
@@ -254,3 +255,82 @@ def test_ensure_missing_covered_adds_nothing_when_nothing_is_missing():
     milestones = [_milestone("Build it")]
 
     assert ensure_missing_covered(milestones, []) == milestones
+
+
+def _fake_plan(milestones):
+    """Return a plan_fn that always answers with `milestones`."""
+    def plan_fn(title, description, required, missing):
+        return [dict(milestone) for milestone in milestones]
+
+    return plan_fn
+
+
+def test_plan_opportunity_writes_and_commits_the_plan(session):
+    opportunity = _add_opportunity(session, missing=[])
+    plan_fn = _fake_plan([
+        _milestone("Scaffold the project"),
+        _milestone("Build the API"),
+        _milestone("Ship it"),
+    ])
+
+    milestones = plan_opportunity(session, opportunity, plan_fn=plan_fn)
+
+    assert [m["title"] for m in milestones] == [
+        "Scaffold the project", "Build the API", "Ship it"
+    ]
+    assert json.loads(opportunity.execution_plan) == milestones
+
+
+def test_plan_opportunity_applies_the_coverage_guard(session):
+    opportunity = _add_opportunity(session, missing=["SQL"])
+    plan_fn = _fake_plan([_milestone("Build the API")])
+
+    milestones = plan_opportunity(session, opportunity, plan_fn=plan_fn)
+
+    assert milestones[0]["title"] == "Learn SQL"
+
+
+def test_plan_opportunity_passes_the_stored_lists_to_the_model(session):
+    opportunity = _add_opportunity(
+        session, required=("Python", "SQL"), missing=("SQL",)
+    )
+    seen = {}
+
+    def plan_fn(title, description, required, missing):
+        seen.update(title=title, required=required, missing=missing)
+        return [_milestone("Build it")]
+
+    plan_opportunity(session, opportunity, plan_fn=plan_fn)
+
+    assert seen["title"] == "An idea"
+    assert seen["required"] == ["Python", "SQL"]
+    assert seen["missing"] == ["SQL"]
+
+
+def test_plan_opportunity_raises_on_an_empty_reply_and_writes_nothing(session):
+    """7b's empty-array failure in a new place.
+
+    An empty list written to execution_plan satisfies `IS NOT NULL`, so the row
+    reads as planned forever after and is never revisited. Crashing is better.
+    """
+    opportunity = _add_opportunity(session, missing=["SQL"])
+
+    with pytest.raises(ValueError, match="zero milestones"):
+        plan_opportunity(session, opportunity, plan_fn=_fake_plan([]))
+
+    assert opportunity.execution_plan is None
+
+
+def test_plan_opportunity_checks_emptiness_before_the_coverage_guard(session):
+    """Order matters, and this is the test that pins it.
+
+    With two missing skills and an empty reply, running the guard first would
+    produce a two-milestone plan of nothing but generated Learn steps and no
+    build work at all - a failed generation wearing the shape of a success.
+    """
+    opportunity = _add_opportunity(session, missing=["SQL", "Docker"])
+
+    with pytest.raises(ValueError, match="zero milestones"):
+        plan_opportunity(session, opportunity, plan_fn=_fake_plan([]))
+
+    assert opportunity.execution_plan is None

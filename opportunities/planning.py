@@ -140,3 +140,24 @@ def ensure_missing_covered(milestones: list[dict], missing: list[str]) -> list[d
     ]
 
     return generated + milestones
+
+
+def plan_opportunity(session, opportunity, plan_fn=call_ollama_plan) -> list[dict]:
+    required = json.loads(opportunity.required_skills or "[]")
+    missing = json.loads(opportunity.missing_skills or "[]")
+
+    milestones = plan_fn(
+        opportunity.title, opportunity.description, required, missing
+    )
+    # Checked before the guard runs. The guard fills gaps in a real plan; it
+    # must never be what manufactures one.
+    if not milestones:
+        raise ValueError(
+            f"Opportunity {opportunity.id} came back with zero milestones - "
+            "refusing to write an empty plan"
+        )
+
+    milestones = ensure_missing_covered(milestones, missing)
+    opportunity.execution_plan = json.dumps(milestones)
+    session.commit()
+    return milestones
