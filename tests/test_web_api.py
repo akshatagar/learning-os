@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from storage.models import MergeQueue
 from web.app import create_app
+from web.jobs import JobRegistry
 
 
 def test_health_reports_ok(engine):
@@ -54,3 +55,41 @@ def test_events_route_is_registered(engine):
     app = create_app(engine)
 
     assert "/events" in {route.path for route in app.routes}
+
+
+def test_starting_an_unknown_kind_is_rejected(engine):
+    client = TestClient(create_app(engine))
+
+    response = client.post("/jobs/not-a-real-kind")
+
+    assert response.status_code == 404
+
+
+def test_starting_a_job_returns_its_id(engine):
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, registry=registry)
+    app.state.job_kinds = {"slow": lambda session: None}
+    client = TestClient(app)
+
+    payload = client.post("/jobs/slow").json()
+
+    assert payload["kind"] == "slow"
+    assert payload["status"] in {"running", "done"}
+    assert registry.get(payload["job_id"]) is not None
+
+
+def test_job_status_is_readable_by_id(engine):
+    app = create_app(engine)
+    app.state.job_kinds = {"slow": lambda session: None}
+    client = TestClient(app)
+
+    job_id = client.post("/jobs/slow").json()["job_id"]
+
+    payload = client.get(f"/jobs/{job_id}").json()
+    assert payload["job_id"] == job_id
+
+
+def test_reading_an_unknown_job_is_a_404(engine):
+    client = TestClient(create_app(engine))
+
+    assert client.get("/jobs/nonexistent").status_code == 404

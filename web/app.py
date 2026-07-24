@@ -2,15 +2,22 @@ import asyncio
 import json
 import queue
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from opportunities.generate import generate_ideas
 from web.jobs import JobRegistry
 from web.state import panel_state
 
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 15.0
+
+# One kind in 8a-1, enough to prove the path end to end. 8b-8d register
+# ingest, recommend, score, and plan as those surfaces are built.
+JOB_KINDS = {
+    "generate-ideas": lambda session: generate_ideas(session),
+}
 
 
 def create_app(engine, registry: JobRegistry | None = None) -> FastAPI:
@@ -18,9 +25,30 @@ def create_app(engine, registry: JobRegistry | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.registry = registry or JobRegistry(lambda: Session(engine))
 
+    # Copied onto app.state rather than read from the module constant, so a
+    # test can register a fast fake kind without touching the real one.
+    app.state.job_kinds = dict(JOB_KINDS)
+
+    def _describe(job) -> dict:
+        return {"job_id": job.id, "kind": job.kind, "status": job.status}
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
+
+    @app.post("/jobs/{kind}")
+    def start_job(kind: str) -> dict:
+        fn = app.state.job_kinds.get(kind)
+        if fn is None:
+            raise HTTPException(status_code=404, detail=f"Unknown job kind: {kind}")
+        return _describe(app.state.registry.start(kind, fn))
+
+    @app.get("/jobs/{job_id}")
+    def job_status(job_id: str) -> dict:
+        job = app.state.registry.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="No such job")
+        return _describe(job)
 
     @app.get("/state")
     def state() -> dict:
