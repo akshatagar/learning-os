@@ -36,3 +36,21 @@ def test_state_reflects_rows_written_after_startup(engine):
     queue = next(stage for stage in stages if stage["id"] == "queue")
     assert queue["lamp"] == "holding"
     assert queue["count"] == 1
+
+
+def test_events_route_is_registered(engine):
+    """Registration only - the stream cannot be driven through TestClient.
+
+    This Starlette version buffers the whole response body before returning,
+    so requesting an endless stream hangs before the headers arrive. It is a
+    limitation of the test transport, not of the endpoint: verified against a
+    real uvicorn server, /events returns 200 text/event-stream, delivers a
+    hello snapshot followed by job transitions, and drops its subscriber on
+    disconnect.
+
+    Delivery itself is covered deterministically by the registry's own
+    publish/subscribe tests in tests/test_web_jobs.py.
+    """
+    app = create_app(engine)
+
+    assert "/events" in {route.path for route in app.routes}
