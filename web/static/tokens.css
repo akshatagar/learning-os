@@ -1,0 +1,34 @@
+/* Implements DESIGN.md. The frontmatter there is normative; this file is its
+   CSS expression. Values are provisional until this build settles them. */
+
+/* Archivo is not vendored yet, so there is no @font-face block: declaring one
+   for files that are absent costs a failed request per weight on every load.
+   The stacks below name it first, so dropping the woff2 files into
+   web/static/fonts/ and adding the @font-face rules is the only step left.
+   Until then the narrow fallback renders: correct layout, wrong texture. */
+
+:root {
+  /* Four roles. Two draw the plant, two are lamps. Nothing else has colour. */
+  --ground: #d7dcd3;
+  --line: #1e221c;
+  --lamp-holding: #c97f0a;
+  --lamp-running: #35854a;
+
+  /* Derived from --line only; not new colours.
+     --line-muted is for text and clears 4.5:1 against the ground. Anything
+     lighter does not: at 42% alpha this computes to about 2.35:1, which is
+     where secondary text on a coloured ground usually goes wrong.
+     --line-soft is for graphics only, where the floor is 3:1. */
+  --line-muted: rgba(30, 34, 28, 0.72);
+  --line-soft: rgba(30, 34, 28, 0.45);
+  --line-hairline: rgba(30, 34, 28, 0.18);
+  --engrave-highlight: rgba(255, 255, 255, 0.55);
+
+  --legend: "Archivo Narrow", "Arial Narrow", Helvetica, sans-serif;
+  --body: "Archivo", Helvetica, Arial, sans-serif;
+
+  --step-1: 4px;
+  --step-2: 8px;
+  --step-3: 16px;
+  --step-4: 32px;
+}

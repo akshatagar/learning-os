@@ -1,0 +1,78 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--line);
+  font-family: var(--body);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An engraved legend plate, not a page header. */
+.plate {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--step-3);
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--line-hairline);
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+.plate__state { color: var(--line-muted); text-align: right; }
+
+main { padding: var(--step-4); }
+#panel { width: 100%; height: auto; overflow: visible; }
+
+.stage__body {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+/* Engraved, never floating: a cut line plus the light edge it catches. */
+.stage__highlight {
+  fill: none;
+  stroke: var(--engrave-highlight);
+  stroke-width: 1.5;
+  transform: translateY(1.5px);
+}
+.stage__label {
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  fill: var(--line-muted);
+}
+.stage__count {
+  font-family: var(--body);
+  font-weight: 500;
+  font-size: 20px;
+  fill: var(--line);
+}
+
+/* The only circles in the system. */
+.stage__lamp { fill: none; stroke: var(--line-soft); stroke-width: 1; }
+.stage[data-lamp="holding"] .stage__lamp {
+  fill: var(--lamp-holding);
+  stroke: var(--lamp-holding);
+}
+.stage[data-lamp="running"] .stage__lamp {
+  fill: var(--lamp-running);
+  stroke: var(--lamp-running);
+}
+
+.run--input { stroke-dasharray: 4 4; stroke: var(--line-soft); }
+
+/* Hover deepens the cut. It must not glow: only lamps carry light. */
+.stage { cursor: pointer; }
+.stage:hover .stage__body { stroke-width: 2.5; }
+.stage:focus-visible { outline: none; }
+.stage:focus-visible .stage__body { stroke-width: 2.5; }
+.stage:focus-visible .stage__label { fill: var(--line); }
+
+@media (max-width: 720px) {
+  /* Redrawn as a vertical run in Task 10, never reflowed into cards. */
+  main { padding: var(--step-3); }
+}

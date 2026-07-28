@@ -2,8 +2,11 @@ import asyncio
 import json
 import queue
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from opportunities.generate import generate_ideas
@@ -96,5 +99,13 @@ def create_app(engine, registry: JobRegistry | None = None) -> FastAPI:
                 registry.unsubscribe(stream)
 
         return StreamingResponse(publish(), media_type="text/event-stream")
+
+    # Mounted last on purpose. Mounting "/" before the API routes are declared
+    # would shadow every one of them.
+    app.mount(
+        "/",
+        StaticFiles(directory=Path(__file__).parent / "static", html=True),
+        name="static",
+    )
 
     return app

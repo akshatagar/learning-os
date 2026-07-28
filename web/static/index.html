@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>learning-os</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header class="plate">
+  <span class="plate__name">LEARNING-OS</span>
+  <span class="plate__state" id="plant-state">READING PANEL</span>
+</header>
+
+<main>
+<svg id="panel" viewBox="0 0 1240 420" role="img"
+     aria-label="Pipeline mimic panel">
+  <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
+    <path d="M150 120 H190"/>
+    <path d="M300 120 H340"/>
+    <path d="M450 120 H490"/>
+    <path d="M600 120 H640"/>
+    <path d="M750 120 H790"/>
+    <path d="M900 120 H940"/>
+    <path d="M1050 120 H1090"/>
+    <path d="M545 144 V250 H600"/>
+    <path d="M995 250 H1050 V144" class="run--input"/>
+  </g>
+
+  <g class="stages">
+    <g class="stage" data-stage="ingest"     transform="translate(40,98)"></g>
+    <g class="stage" data-stage="resolution" transform="translate(190,98)"></g>
+    <g class="stage" data-stage="queue"      transform="translate(340,98)"></g>
+    <g class="stage" data-stage="concepts"   transform="translate(490,98)"></g>
+    <g class="stage" data-stage="ideas"      transform="translate(640,98)"></g>
+    <g class="stage" data-stage="approval"   transform="translate(790,98)"></g>
+    <g class="stage" data-stage="scoring"    transform="translate(940,98)"></g>
+    <g class="stage" data-stage="planning"   transform="translate(1090,98)"></g>
+    <g class="stage" data-stage="goals"      transform="translate(600,228)"></g>
+    <g class="stage" data-stage="skills"     transform="translate(890,228)"></g>
+  </g>
+</svg>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
