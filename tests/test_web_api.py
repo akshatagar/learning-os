@@ -89,6 +89,39 @@ def test_job_status_is_readable_by_id(engine):
     assert payload["job_id"] == job_id
 
 
+def test_a_failed_job_reports_why(engine):
+    """A failure the surface cannot name is indistinguishable from a hang.
+
+    The registry already records the error; without it on the wire a failed
+    job reads as "not running" and the operator has nowhere to look.
+    """
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, registry=registry)
+
+    def explode(session):
+        raise RuntimeError("model exploded")
+
+    app.state.job_kinds = {"doomed": explode}
+    client = TestClient(app)
+
+    job_id = client.post("/jobs/doomed").json()["job_id"]
+    registry.get(job_id).thread.join(5.0)
+
+    payload = client.get(f"/jobs/{job_id}").json()
+    assert payload["status"] == "failed"
+    assert "model exploded" in payload["error"]
+
+
+def test_a_successful_job_reports_no_error(engine):
+    app = create_app(engine)
+    app.state.job_kinds = {"fine": lambda session: None}
+    client = TestClient(app)
+
+    job_id = client.post("/jobs/fine").json()["job_id"]
+
+    assert client.get(f"/jobs/{job_id}").json()["error"] is None
+
+
 def test_reading_an_unknown_job_is_a_404(engine):
     client = TestClient(create_app(engine))
 

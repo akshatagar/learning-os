@@ -72,6 +72,28 @@ main { padding: var(--step-4); }
 .stage:focus-visible .stage__body { stroke-width: 2.5; }
 .stage:focus-visible .stage__label { fill: var(--line); }
 
+/* A sentence, not a legend, so it is not tracked caps. It carries no colour
+   of its own either: lamps are the only things on this panel that light. */
+.fault {
+  margin: 0 0 var(--step-3);
+  max-width: 65ch;
+  color: var(--line);
+}
+
+/* A running stage moves. A ninety-second operation must read as a process
+   working, not as an interface that has hung. */
+@keyframes run-flow {
+  to { stroke-dashoffset: -16px; }
+}
+.stage[data-lamp="running"] .stage__body {
+  stroke-dasharray: 8 8;
+  animation: run-flow 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage[data-lamp="running"] .stage__body { animation: none; }
+}
+
 @media (max-width: 720px) {
   /* Redrawn as a vertical run in Task 10, never reflowed into cards. */
   main { padding: var(--step-3); }

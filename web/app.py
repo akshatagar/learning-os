@@ -33,7 +33,14 @@ def create_app(engine, registry: JobRegistry | None = None) -> FastAPI:
     app.state.job_kinds = dict(JOB_KINDS)
 
     def _describe(job) -> dict:
-        return {"job_id": job.id, "kind": job.kind, "status": job.status}
+        # error rides along with status: a failure the panel cannot name is
+        # indistinguishable from a stage that simply stopped.
+        return {
+            "job_id": job.id,
+            "kind": job.kind,
+            "status": job.status,
+            "error": job.error,
+        }
 
     @app.get("/health")
     def health() -> dict:
