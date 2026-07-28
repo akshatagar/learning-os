@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from web.shell import BackgroundServer
+from web.shell import BackgroundServer, run
 
 
 def _free_port() -> int:
@@ -75,3 +75,76 @@ def test_a_server_that_dies_on_startup_fails_fast():
 
     with pytest.raises(RuntimeError, match="stopped before it was ready"):
         server.wait_until_ready(timeout=10.0)
+
+
+class FakeServer:
+    # `log` lets a caller hand both fakes the same list, so their calls land
+    # on one timeline and can be ordered against each other.
+    def __init__(self, url="http://127.0.0.1:8765/", log=None):
+        self.url = url
+        self.calls = [] if log is None else log
+
+    def start(self):
+        self.calls.append("start")
+
+    def wait_until_ready(self, timeout=30.0):
+        self.calls.append("ready")
+
+    def stop(self, timeout=5.0):
+        self.calls.append("stop")
+
+
+class FakeGui:
+    def __init__(self, on_start=None, log=None):
+        self.windows = []
+        self.calls = [] if log is None else log
+        self._on_start = on_start
+
+    def create_window(self, title, url, **kwargs):
+        self.calls.append("create_window")
+        self.windows.append({"title": title, "url": url, **kwargs})
+
+    def start(self):
+        self.calls.append("gui_start")
+        if self._on_start:
+            self._on_start()
+
+
+def test_the_window_opens_on_the_server_url():
+    server, gui = FakeServer(), FakeGui()
+
+    run(server, gui)
+
+    assert gui.windows[0]["url"] == server.url
+
+
+def test_the_server_is_ready_before_the_window_is_created():
+    """Ordering is the whole risk. A window created first shows an error page."""
+    timeline = []
+    server, gui = FakeServer(log=timeline), FakeGui(log=timeline)
+
+    run(server, gui)
+
+    assert timeline.index("ready") < timeline.index("create_window")
+
+
+def test_closing_the_window_stops_the_server():
+    """gui.start() returns when the window closes - that is the shutdown signal."""
+    server, gui = FakeServer(), FakeGui()
+
+    run(server, gui)
+
+    assert server.calls == ["start", "ready", "stop"]
+
+
+def test_the_server_stops_even_if_the_gui_raises():
+    """Otherwise a GUI crash leaves a server bound to the port forever."""
+    def explode():
+        raise RuntimeError("gui exploded")
+
+    server, gui = FakeServer(), FakeGui(on_start=explode)
+
+    with pytest.raises(RuntimeError, match="gui exploded"):
+        run(server, gui)
+
+    assert "stop" in server.calls
