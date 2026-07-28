@@ -13,6 +13,11 @@ TITLE = "learning-os"
 WIDTH = 1280
 HEIGHT = 820
 
+# --ground from web/static/tokens.css. Duplicated here because the window
+# frame is painted before any stylesheet loads, and pywebview's default is
+# white: without this every launch flashes white against the panel's ground.
+BACKGROUND = "#d7dcd3"
+
 
 class BackgroundServer:
     """uvicorn on its own thread, so a GUI can own the main one.
@@ -74,7 +79,10 @@ def run(server, gui, title: str = TITLE, width: int = WIDTH,
     """
     server.start()
     server.wait_until_ready()
-    gui.create_window(title, server.url, width=width, height=height)
+    gui.create_window(
+        title, server.url, width=width, height=height,
+        background_color=BACKGROUND,
+    )
     try:
         # Blocks on the main thread until the window closes.
         gui.start()

@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from web.shell import BackgroundServer, run
+from web.shell import BACKGROUND, BackgroundServer, run
 
 
 def _free_port() -> int:
@@ -116,6 +116,18 @@ def test_the_window_opens_on_the_server_url():
     run(server, gui)
 
     assert gui.windows[0]["url"] == server.url
+
+
+def test_the_window_opens_in_the_panel_ground_colour():
+    """pywebview paints the frame white before any stylesheet loads.
+
+    Left at the default, every launch flashes white against the ground.
+    """
+    server, gui = FakeServer(), FakeGui()
+
+    run(server, gui)
+
+    assert gui.windows[0]["background_color"] == BACKGROUND
 
 
 def test_the_server_is_ready_before_the_window_is_created():

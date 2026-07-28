@@ -151,7 +151,29 @@ uv run pytest
 
 ## Usage
 
-> **Note:** `cli.py` is intentionally untracked, so a fresh clone has **no entry point**. All logic lives in the importable modules listed above — that is the real API, and the CLI is a thin `argparse` shim over it. The commands below describe the author's local shim; reproduce it, or call the functions directly.
+> **Note:** `cli.py` is intentionally untracked, so a fresh clone has **no command-line entry point**. All logic lives in the importable modules listed above — that is the real API, and the CLI is a thin `argparse` shim over it. The commands below describe the author's local shim; reproduce it, or call the functions directly. The desktop app is the exception: it is tracked, and it works on a fresh clone.
+
+### The desktop app
+
+```bash
+uv run python -m web.shell
+```
+
+Opens the pipeline as a mimic panel in a desktop window: every stage with its count, lit only where something is genuinely waiting on you. Amber means a gate is holding something for you to decide; green means work is running. A dark panel means the plant is fine, not that the page failed to load.
+
+The window owns the server — closing it stops everything. Expect a few seconds of startup before the window appears, which is `sentence-transformers` loading once instead of on every invocation.
+
+To use the same panel in a browser instead:
+
+```bash
+uv run python -m web.serve
+```
+
+then open `http://127.0.0.1:8765/`. Both bind to `127.0.0.1` only; this is a single-user local application and is not reachable from the network.
+
+**Windows requires Microsoft Edge WebView2**, which pywebview renders into. It is present by default on Windows 11. On Windows 10, install the Evergreen Runtime from Microsoft before the first launch, or the window opens empty.
+
+Only `generate-ideas` can currently be started from the panel. Clicking a stage opens a work surface that says so — the rest are still driven from Python.
 
 ### Getting started
 
