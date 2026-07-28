@@ -44,7 +44,7 @@ async function openStage(group) {
   surfaceTitle.textContent = stage.toUpperCase();
   surface.hidden = false;
   if (stage === "queue") {
-    await renderQueue();
+    await renderQueue(refresh);
   } else {
     showPlaceholder();
   }

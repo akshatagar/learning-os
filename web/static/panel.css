@@ -112,7 +112,8 @@ main { padding: var(--step-4); }
   font-size: 12px;
   letter-spacing: 0.18em;
 }
-.surface__close {
+.surface__close,
+.gate__button {
   font-family: var(--legend);
   font-weight: 600;
   font-size: 11px;
@@ -124,7 +125,10 @@ main { padding: var(--step-4); }
   padding: var(--step-1) var(--step-2);
   cursor: pointer;
 }
-.surface__close:hover { border-width: 2px; padding: 3px 7px; }
+/* The border thickens and the padding gives back the same 1px, so hovering
+   deepens the cut without shifting anything around it. */
+.surface__close:hover,
+.gate__button:hover { border-width: 2px; padding: 3px 7px; }
 .surface__empty { color: var(--line-muted); max-width: 65ch; }
 
 /* The merge-queue gate. Nothing here carries colour: the confidence number
@@ -165,6 +169,12 @@ main { padding: var(--step-4); }
 .gate__neighbor-id { color: var(--line-muted); }
 .gate__neighbor-name { flex: 1; }
 .gate__neighbor-score { color: var(--line-muted); }
+
+.gate__actions {
+  display: flex;
+  gap: var(--step-2);
+  margin-top: var(--step-3);
+}
 
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }

@@ -173,7 +173,17 @@ then open `http://127.0.0.1:8765/`. Both bind to `127.0.0.1` only; this is a sin
 
 **Windows requires Microsoft Edge WebView2**, which pywebview renders into. It is present by default on Windows 11. On Windows 10, install the Evergreen Runtime from Microsoft before the first launch, or the window opens empty.
 
-Only `generate-ideas` can currently be started from the panel. Clicking a stage opens a work surface that says so — the rest are still driven from Python.
+Only `generate-ideas` can currently be started from the panel. Clicking the `queue` stage opens the merge-queue gate, described below; every other stage opens a work surface that says it is not built yet, and those are still driven from Python.
+
+### Reviewing the merge queue
+
+When the resolution step is not confident enough to decide on its own, the candidate goes to the merge queue and the `queue` stage lights amber. Click it in the panel: the gate shows one entry at a time with the model's decision, its confidence, its reasoning, and the five nearest existing concepts scored live. Merge into one of them, insert the candidate as a new concept, or dismiss it.
+
+There is no skip. The gate always serves the oldest pending entry, so an entry you do not decide stays in front of you.
+
+The running tally at the foot counts how often you agreed with the model on the entries where it committed to a call — entries it queued as `uncertain` are excluded, since a model that declined to decide got nothing wrong. That is the number to watch before changing `MATCH_THRESHOLD` or `NEW_THRESHOLD` in `resolution/adjudicate.py`.
+
+The CLI loop (`run_review_loop` in `resolution/review.py`) still works and does the same thing.
 
 ### Getting started
 

@@ -22,13 +22,16 @@ function modelLine(entry) {
   return el("p", "gate__model", `${decision} · ${confidence}`);
 }
 
-function neighborRow(neighbor) {
+function neighborRow(neighbor, onMerge) {
   const row = el("li", "gate__neighbor");
   row.appendChild(el("span", "gate__neighbor-id", `#${neighbor.id}`));
   row.appendChild(el("span", "gate__neighbor-name", neighbor.name));
   row.appendChild(
     el("span", "gate__neighbor-score", neighbor.similarity_score.toFixed(2)),
   );
+  // The id travels with the button, so two concepts sharing a name are still
+  // two unambiguous choices.
+  row.appendChild(actionButton("MERGE", () => onMerge(neighbor.id)));
   return row;
 }
 
@@ -41,7 +44,32 @@ function tallyLine(tally) {
   return el("p", "gate__tally", text);
 }
 
-export async function renderQueue() {
+async function resolve(entryId, action, targetConceptId, onResolved) {
+  const response = await fetch(`/queue/${entryId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, target_concept_id: targetConceptId }),
+  });
+  if (!response.ok) {
+    const problem = await response.json();
+    body.appendChild(
+      el("p", "gate__reasoning", `That did not go through: ${problem.detail}`),
+    );
+    return;
+  }
+  // The lamp is the point: resolving the last entry must darken the stage.
+  await renderQueue(onResolved);
+  onResolved();
+}
+
+function actionButton(label, onClick) {
+  const button = el("button", "gate__button", label);
+  button.type = "button";
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+export async function renderQueue(onResolved) {
   const [next, tally] = await Promise.all([
     fetch("/queue/next").then((response) => response.json()),
     fetch("/queue/agreement").then((response) => response.json()),
@@ -59,6 +87,9 @@ export async function renderQueue() {
   }
 
   const entry = next.entry;
+  const act = (action, targetConceptId = null) =>
+    resolve(entry.id, action, targetConceptId, onResolved);
+
   body.appendChild(el("p", "gate__name", entry.candidate_name));
   if (entry.candidate_category) {
     body.appendChild(
@@ -74,7 +105,7 @@ export async function renderQueue() {
     body.appendChild(el("p", "gate__legend", "NEAREST CONCEPTS"));
     const list = el("ul", "gate__neighbors");
     for (const neighbor of next.neighbors) {
-      list.appendChild(neighborRow(neighbor));
+      list.appendChild(neighborRow(neighbor, (id) => act("merge", id)));
     }
     body.appendChild(list);
   } else {
@@ -82,6 +113,11 @@ export async function renderQueue() {
       el("p", "gate__reasoning", "No existing concepts to merge into."),
     );
   }
+
+  const actions = el("div", "gate__actions");
+  actions.appendChild(actionButton("INSERT AS NEW", () => act("new")));
+  actions.appendChild(actionButton("DISMISS", () => act("dismiss")));
+  body.appendChild(actions);
 
   body.appendChild(tallyLine(tally));
 }
