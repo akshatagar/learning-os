@@ -3,6 +3,7 @@ from sqlalchemy import select
 
 
 from resolution.review import (
+    agreement_tally,
     format_entry,
     next_pending,
     pending_entries,
@@ -356,3 +357,64 @@ def test_next_pending_has_no_model_decision_without_a_log(session, collection):
     session.commit()
 
     assert next_pending(session, collection).model_decision is None
+
+
+def _resolved_log(decision, resolution):
+    return AdjudicationLog(
+        candidate_name="beam search",
+        model_decision=decision,
+        human_resolution=resolution,
+    )
+
+
+def test_agreement_tally_is_zero_on_an_empty_log(session):
+    assert agreement_tally(session) == {
+        "agreed": 0, "disagreed": 0, "dismissed": 0
+    }
+
+
+def test_agreement_tally_counts_matching_calls_as_agreed(session):
+    session.add_all([
+        _resolved_log("match", "approved_merge"),
+        _resolved_log("new", "approved_new"),
+    ])
+    session.commit()
+
+    assert agreement_tally(session)["agreed"] == 2
+
+
+def test_agreement_tally_counts_the_other_branch_as_disagreed(session):
+    session.add_all([
+        _resolved_log("match", "approved_new"),
+        _resolved_log("new", "approved_merge"),
+    ])
+    session.commit()
+
+    tally = agreement_tally(session)
+    assert tally["disagreed"] == 2
+    assert tally["agreed"] == 0
+
+
+def test_agreement_tally_counts_a_rejection_apart_from_disagreement(session):
+    """Dismissing is not preferring the other branch.
+
+    The human threw the candidate away entirely, which says nothing about
+    whether match or new was the better call.
+    """
+    session.add(_resolved_log("match", "rejected"))
+    session.commit()
+
+    tally = agreement_tally(session)
+    assert tally == {"agreed": 0, "disagreed": 0, "dismissed": 1}
+
+
+def test_agreement_tally_ignores_uncertain_and_unresolved_rows(session):
+    session.add_all([
+        _resolved_log("uncertain", "approved_new"),
+        AdjudicationLog(candidate_name="beam search", model_decision="match"),
+    ])
+    session.commit()
+
+    assert agreement_tally(session) == {
+        "agreed": 0, "disagreed": 0, "dismissed": 0
+    }

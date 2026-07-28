@@ -15,6 +15,11 @@ _STATUS_BY_ACTION = {
     "dismiss": "rejected",
 }
 
+# The human resolution that means "the model was right". uncertain is absent
+# on purpose: a model that declined to decide got nothing wrong, and scoring
+# it as a miss would measure hedging rather than accuracy.
+_AGREES_WITH = {"match": "approved_merge", "new": "approved_new"}
+
 
 @dataclass
 class ReviewResult:
@@ -63,6 +68,29 @@ def next_pending(session, collection, k=NEIGHBOR_K) -> PendingView | None:
         remaining=len(entries),
         model_decision=model_decision,
     )
+
+
+def agreement_tally(session) -> dict:
+    """How often the human confirmed the model's under-confident call.
+
+    Reads back adjudication_log, which has recorded both sides since the
+    resolution pipeline was built and has never been queried.
+    """
+    counts = {"agreed": 0, "disagreed": 0, "dismissed": 0}
+    logs = session.scalars(
+        select(AdjudicationLog).where(
+            AdjudicationLog.human_resolution.is_not(None),
+            AdjudicationLog.model_decision.in_(list(_AGREES_WITH)),
+        )
+    )
+    for log in logs:
+        if log.human_resolution == "rejected":
+            counts["dismissed"] += 1
+        elif log.human_resolution == _AGREES_WITH[log.model_decision]:
+            counts["agreed"] += 1
+        else:
+            counts["disagreed"] += 1
+    return counts
 
 
 def _record_human_resolution(session, entry, status):
