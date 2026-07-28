@@ -127,6 +127,45 @@ main { padding: var(--step-4); }
 .surface__close:hover { border-width: 2px; padding: 3px 7px; }
 .surface__empty { color: var(--line-muted); max-width: 65ch; }
 
+/* The merge-queue gate. Nothing here carries colour: the confidence number
+   is data, not a lamp, and the Unlit Rule holds inside the surface too. */
+#surface-count,
+.gate__category,
+.gate__model,
+.gate__legend,
+.gate__tally {
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+
+/* The candidate name is the only large type on the surface: it is the thing
+   being judged. */
+.gate__name {
+  font-size: 24px;
+  font-weight: 500;
+  margin: var(--step-3) 0 var(--step-1);
+}
+.gate__category { margin: 0 0 var(--step-3); }
+.gate__model { margin: 0 0 var(--step-1); }
+.gate__reasoning { margin: 0 0 var(--step-3); max-width: 65ch; }
+.gate__legend { margin: 0 0 var(--step-2); }
+.gate__tally { margin: var(--step-3) 0 0; }
+
+.gate__neighbors { list-style: none; margin: 0; padding: 0; }
+.gate__neighbor {
+  display: flex;
+  align-items: baseline;
+  gap: var(--step-3);
+  padding: var(--step-2) 0;
+  border-bottom: 1px solid var(--line-hairline);
+}
+.gate__neighbor-id { color: var(--line-muted); }
+.gate__neighbor-name { flex: 1; }
+.gate__neighbor-score { color: var(--line-muted); }
+
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
 

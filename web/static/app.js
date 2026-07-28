@@ -1,5 +1,6 @@
 import { connectEvents } from "./events.js";
 import { renderPanel, summarize } from "./panel.js";
+import { renderQueue } from "./queue.js";
 
 const plantState = document.getElementById("plant-state");
 const fault = document.getElementById("fault");
@@ -25,12 +26,28 @@ async function showFault(jobId) {
 // never lose your place in the run to look at one stage.
 const surface = document.getElementById("surface");
 const surfaceTitle = document.getElementById("surface-title");
+const surfaceBody = document.getElementById("surface-body");
+const surfaceCount = document.getElementById("surface-count");
 let opener = null;
 
-function openStage(group) {
+function showPlaceholder() {
+  surfaceCount.textContent = "";
+  const note = document.createElement("p");
+  note.className = "surface__empty";
+  note.textContent = "No work surface here yet. Built in 8c and 8d.";
+  surfaceBody.replaceChildren(note);
+}
+
+async function openStage(group) {
   opener = group;
-  surfaceTitle.textContent = group.dataset.stage.toUpperCase();
+  const stage = group.dataset.stage;
+  surfaceTitle.textContent = stage.toUpperCase();
   surface.hidden = false;
+  if (stage === "queue") {
+    await renderQueue();
+  } else {
+    showPlaceholder();
+  }
 }
 
 // Both drawings are covered; the hidden one simply cannot be reached.
