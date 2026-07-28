@@ -10,9 +10,24 @@ function element(name, attrs) {
   return node;
 }
 
+const LAMP_IN_WORDS = {
+  holding: "waiting on you",
+  running: "running",
+  unlit: "clear",
+};
+
 function drawStage(group, stage) {
   group.replaceChildren();
   group.dataset.lamp = stage.lamp;
+
+  // A stage opens a work surface, so it is a control and must be reachable
+  // and readable without the drawing.
+  group.setAttribute("tabindex", "0");
+  group.setAttribute("role", "button");
+  group.setAttribute(
+    "aria-label",
+    `${stage.label}, ${stage.count}, ${LAMP_IN_WORDS[stage.lamp]}`,
+  );
 
   // Highlight first so the cut line sits on top of it.
   group.appendChild(element("rect", {
@@ -36,9 +51,13 @@ function drawStage(group, stage) {
 }
 
 export function renderPanel(state) {
+  // Two drawings carry the same ids - the wide plant and the narrow one - and
+  // only one is displayed at a time. Both are kept current so a resize is a
+  // redraw, never a repopulate.
   for (const stage of state.stages) {
-    const group = document.querySelector(`[data-stage="${stage.id}"]`);
-    if (group) drawStage(group, stage);
+    for (const group of document.querySelectorAll(`[data-stage="${stage.id}"]`)) {
+      drawStage(group, stage);
+    }
   }
 }
 

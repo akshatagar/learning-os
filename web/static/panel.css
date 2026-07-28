@@ -94,7 +94,47 @@ main { padding: var(--step-4); }
   .stage[data-lamp="running"] .stage__body { animation: none; }
 }
 
+/* Cut into the panel, not floating above it: no shadow, no rounded corner,
+   and the drawing stays on screen so you never lose your place in the run. */
+.surface {
+  margin-top: var(--step-4);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-hairline);
+  padding: var(--step-3) 0 var(--step-4);
+}
+.surface__plate {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--step-3);
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+.surface__close {
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  padding: var(--step-1) var(--step-2);
+  cursor: pointer;
+}
+.surface__close:hover { border-width: 2px; padding: 3px 7px; }
+.surface__empty { color: var(--line-muted); max-width: 65ch; }
+
+/* The narrow drawing is a second plant, not a reflow of the first. */
+#panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
+
 @media (max-width: 720px) {
-  /* Redrawn as a vertical run in Task 10, never reflowed into cards. */
+  /* Redrawn as a vertical run, never reflowed into cards: a card stack loses
+     where in the process a thing is stuck, which is what this form exists
+     to show. */
   main { padding: var(--step-3); }
+  #panel { display: none; }
+  #panel-narrow { display: block; }
 }

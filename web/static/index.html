@@ -16,7 +16,7 @@
 <main>
 <p class="fault" id="fault" hidden></p>
 
-<svg id="panel" viewBox="0 0 1240 420" role="img"
+<svg id="panel" viewBox="0 0 1240 420" role="group"
      aria-label="Pipeline mimic panel">
   <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
     <path d="M150 120 H190"/>
@@ -43,6 +43,44 @@
     <g class="stage" data-stage="skills"     transform="translate(890,228)"></g>
   </g>
 </svg>
+
+<svg id="panel-narrow" viewBox="0 0 320 1180" role="group"
+     aria-label="Pipeline mimic panel, vertical">
+  <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
+    <path d="M95 46 V98"/>
+    <path d="M95 174 V226"/>
+    <path d="M95 302 V354"/>
+    <path d="M95 430 V482"/>
+    <path d="M95 558 V610"/>
+    <path d="M95 686 V738"/>
+    <path d="M95 814 V866"/>
+    <path d="M95 942 V994"/>
+    <path d="M205 430 V482"/>
+    <path d="M205 866 V814" class="run--input"/>
+  </g>
+  <g class="stages">
+    <g class="stage" data-stage="ingest"     transform="translate(40,0)"></g>
+    <g class="stage" data-stage="resolution" transform="translate(40,128)"></g>
+    <g class="stage" data-stage="queue"      transform="translate(40,256)"></g>
+    <g class="stage" data-stage="concepts"   transform="translate(40,384)"></g>
+    <g class="stage" data-stage="goals"      transform="translate(150,484)"></g>
+    <g class="stage" data-stage="ideas"      transform="translate(40,512)"></g>
+    <g class="stage" data-stage="approval"   transform="translate(40,640)"></g>
+    <g class="stage" data-stage="scoring"    transform="translate(40,768)"></g>
+    <g class="stage" data-stage="skills"     transform="translate(150,868)"></g>
+    <g class="stage" data-stage="planning"   transform="translate(40,896)"></g>
+  </g>
+</svg>
+
+<section id="surface" class="surface" hidden>
+  <header class="surface__plate">
+    <span id="surface-title">STAGE</span>
+    <button id="surface-close" class="surface__close" type="button">CLOSE</button>
+  </header>
+  <p class="surface__empty">
+    No work surface here yet. Built in 8b through 8d.
+  </p>
+</section>
 </main>
 
 <script type="module" src="app.js"></script>
