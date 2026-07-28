@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from storage.models import MergeQueue
+from storage.models import AdjudicationLog, Concept, MergeQueue
 from web.app import create_app
 from web.jobs import JobRegistry
 
@@ -137,3 +137,72 @@ def test_the_app_carries_the_collection(engine, collection):
     app = create_app(engine, collection)
 
     assert app.state.collection is collection
+
+
+def test_queue_next_is_empty_when_nothing_is_pending(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    payload = client.get("/queue/next").json()
+
+    assert payload == {"entry": None, "neighbors": [], "remaining": 0}
+
+
+def test_queue_next_returns_the_entry_and_its_neighbors(engine, collection):
+    with Session(engine) as session:
+        concept = Concept(name="retrieval augmentation")
+        session.add(concept)
+        session.flush()
+        collection.add(ids=[str(concept.id)], documents=["retrieval augmentation"])
+        log = AdjudicationLog(
+            candidate_name="retrieval-augmented generation", model_decision="match"
+        )
+        session.add(log)
+        session.flush()
+        session.add_all([
+            MergeQueue(
+                candidate_name="retrieval-augmented generation",
+                candidate_category="technique",
+                llm_confidence=0.78,
+                llm_reasoning="Close, but names a pipeline rather than a step.",
+                status="pending",
+                adjudication_log_id=log.id,
+            ),
+            MergeQueue(candidate_name="beam search", status="pending"),
+        ])
+        session.commit()
+
+    payload = TestClient(create_app(engine, collection)).get("/queue/next").json()
+
+    assert payload["entry"]["candidate_name"] == "retrieval-augmented generation"
+    assert payload["entry"]["candidate_category"] == "technique"
+    assert payload["entry"]["llm_confidence"] == 0.78
+    assert payload["entry"]["llm_reasoning"].startswith("Close, but")
+    assert payload["entry"]["model_decision"] == "match"
+    assert payload["neighbors"][0]["name"] == "retrieval augmentation"
+    assert payload["remaining"] == 2
+
+
+def test_queue_next_has_a_null_decision_without_an_adjudication_log(
+    engine, collection
+):
+    with Session(engine) as session:
+        session.add(MergeQueue(candidate_name="beam search", status="pending"))
+        session.commit()
+
+    payload = TestClient(create_app(engine, collection)).get("/queue/next").json()
+
+    assert payload["entry"]["model_decision"] is None
+
+
+def test_queue_agreement_reports_the_tally(engine, collection):
+    with Session(engine) as session:
+        session.add(AdjudicationLog(
+            candidate_name="beam search",
+            model_decision="match",
+            human_resolution="approved_merge",
+        ))
+        session.commit()
+
+    payload = TestClient(create_app(engine, collection)).get("/queue/agreement").json()
+
+    assert payload == {"agreed": 1, "disagreed": 0, "dismissed": 0}

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from opportunities.generate import generate_ideas
+from resolution.review import agreement_tally, next_pending
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -69,6 +70,30 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
             return panel_state(
                 session, running_kinds=app.state.registry.running_kinds()
             )
+
+    @app.get("/queue/next")
+    def queue_next() -> dict:
+        with Session(engine) as session:
+            view = next_pending(session, app.state.collection)
+            if view is None:
+                return {"entry": None, "neighbors": [], "remaining": 0}
+            return {
+                "entry": {
+                    "id": view.entry.id,
+                    "candidate_name": view.entry.candidate_name,
+                    "candidate_category": view.entry.candidate_category,
+                    "llm_confidence": view.entry.llm_confidence,
+                    "llm_reasoning": view.entry.llm_reasoning,
+                    "model_decision": view.model_decision,
+                },
+                "neighbors": view.neighbors,
+                "remaining": view.remaining,
+            }
+
+    @app.get("/queue/agreement")
+    def queue_agreement() -> dict:
+        with Session(engine) as session:
+            return agreement_tally(session)
 
     @app.get("/events")
     async def events() -> StreamingResponse:
