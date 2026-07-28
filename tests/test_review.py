@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from resolution.review import (
     format_entry,
+    next_pending,
     pending_entries,
     resolve_entry,
     run_review_loop,
@@ -281,3 +282,77 @@ def test_review_loop_handles_empty_queue(session, collection):
     counts = run_review_loop(session, collection, input_fn=_scripted())
 
     assert counts == {"merged": 0, "new": 0, "dismissed": 0, "skipped": 0}
+
+
+def test_next_pending_is_none_on_an_empty_queue(session, collection):
+    assert next_pending(session, collection) is None
+
+
+def test_next_pending_serves_the_lowest_pending_id(session, collection):
+    session.add_all([
+        MergeQueue(candidate_name="already done", status="approved_new"),
+        MergeQueue(candidate_name="first", status="pending"),
+        MergeQueue(candidate_name="second", status="pending"),
+    ])
+    session.commit()
+
+    view = next_pending(session, collection)
+
+    assert view.entry.candidate_name == "first"
+    assert view.remaining == 2
+
+
+def test_next_pending_returns_live_neighbors_with_scores(session, collection):
+    concept = Concept(name="retrieval augmentation")
+    session.add(concept)
+    session.flush()
+    collection.add(ids=[str(concept.id)], documents=["retrieval augmentation"])
+    session.add(MergeQueue(candidate_name="retrieval augmentation", status="pending"))
+    session.commit()
+
+    view = next_pending(session, collection)
+
+    assert [n["id"] for n in view.neighbors] == [concept.id]
+    assert view.neighbors[0]["similarity_score"] > 0.9
+
+
+def test_next_pending_sees_a_concept_created_by_the_previous_resolve(
+    session, collection
+):
+    """The second entry must be mergeable into a concept the first one made.
+
+    Snapshotting the neighbour list when the surface opens would hide it, and
+    the operator would create a duplicate they had no way to see.
+    """
+    first = MergeQueue(candidate_name="beam search", status="pending")
+    second = MergeQueue(candidate_name="beam search", status="pending")
+    session.add_all([first, second])
+    session.commit()
+
+    resolve_entry(session, collection, first, "new")
+
+    view = next_pending(session, collection)
+
+    assert view.entry.id == second.id
+    assert [n["name"] for n in view.neighbors] == ["beam search"]
+
+
+def test_next_pending_carries_the_model_decision_from_the_linked_log(
+    session, collection
+):
+    log = AdjudicationLog(candidate_name="beam search", model_decision="match")
+    session.add(log)
+    session.flush()
+    session.add(MergeQueue(
+        candidate_name="beam search", status="pending", adjudication_log_id=log.id
+    ))
+    session.commit()
+
+    assert next_pending(session, collection).model_decision == "match"
+
+
+def test_next_pending_has_no_model_decision_without_a_log(session, collection):
+    session.add(MergeQueue(candidate_name="beam search", status="pending"))
+    session.commit()
+
+    assert next_pending(session, collection).model_decision is None

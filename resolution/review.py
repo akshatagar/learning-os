@@ -22,6 +22,14 @@ class ReviewResult:
     concept_id: int | None
 
 
+@dataclass
+class PendingView:
+    entry: MergeQueue
+    neighbors: list[dict]
+    remaining: int
+    model_decision: str | None
+
+
 def pending_entries(session) -> list[MergeQueue]:
     return list(
         session.scalars(
@@ -29,6 +37,31 @@ def pending_entries(session) -> list[MergeQueue]:
             .where(MergeQueue.status == "pending")
             .order_by(MergeQueue.id)
         )
+    )
+
+
+def next_pending(session, collection, k=NEIGHBOR_K) -> PendingView | None:
+    """The next entry to review, with everything needed to judge it.
+
+    Neighbours are queried live rather than snapshotted: resolving one entry
+    can create the concept the next one should merge into.
+    """
+    entries = pending_entries(session)
+    if not entries:
+        return None
+
+    entry = entries[0]
+    model_decision = None
+    if entry.adjudication_log_id is not None:
+        log = session.get(AdjudicationLog, entry.adjudication_log_id)
+        if log is not None:
+            model_decision = log.model_decision
+
+    return PendingView(
+        entry=entry,
+        neighbors=_query_neighbors(collection, entry.candidate_name, k),
+        remaining=len(entries),
+        model_decision=model_decision,
     )
 
 
