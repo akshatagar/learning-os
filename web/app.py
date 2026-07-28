@@ -23,9 +23,10 @@ JOB_KINDS = {
 }
 
 
-def create_app(engine, registry: JobRegistry | None = None) -> FastAPI:
+def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
     app = FastAPI(title="learning-os")
     app.state.engine = engine
+    app.state.collection = collection
     app.state.registry = registry or JobRegistry(lambda: Session(engine))
 
     # Copied onto app.state rather than read from the module constant, so a

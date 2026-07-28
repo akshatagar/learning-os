@@ -3,9 +3,7 @@ import time
 
 import uvicorn
 
-from storage.db import get_engine
-from web.app import create_app
-from web.serve import DB_PATH, HOST, PORT
+from web.serve import HOST, PORT, build_app
 
 READY_POLL_SECONDS = 0.05
 
@@ -97,7 +95,7 @@ def main() -> None:
 
     # Built before the window opens, which is where the startup pause lives:
     # sentence-transformers loads once here instead of per CLI invocation.
-    server = BackgroundServer(create_app(get_engine(DB_PATH)))
+    server = BackgroundServer(build_app())
     run(server, webview)
 
 
