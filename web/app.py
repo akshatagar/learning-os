@@ -9,8 +9,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+
 from opportunities.generate import generate_ideas
-from resolution.review import agreement_tally, next_pending
+from resolution.review import agreement_tally, next_pending, resolve_entry
+from storage.models import MergeQueue
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -22,6 +25,11 @@ HEARTBEAT_SECONDS = 15.0
 JOB_KINDS = {
     "generate-ideas": lambda session: generate_ideas(session),
 }
+
+
+class ResolveRequest(BaseModel):
+    action: str
+    target_concept_id: int | None = None
 
 
 def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
@@ -94,6 +102,28 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
     def queue_agreement() -> dict:
         with Session(engine) as session:
             return agreement_tally(session)
+
+    @app.post("/queue/{entry_id}/resolve")
+    def queue_resolve(entry_id: int, request: ResolveRequest) -> dict:
+        with Session(engine) as session:
+            entry = session.get(MergeQueue, entry_id)
+            if entry is None or entry.status != "pending":
+                raise HTTPException(
+                    status_code=404, detail="No pending entry with that id"
+                )
+            try:
+                result = resolve_entry(
+                    session,
+                    app.state.collection,
+                    entry,
+                    request.action,
+                    request.target_concept_id,
+                )
+            except ValueError as error:
+                # resolve_entry validates before it mutates, so the entry is
+                # still pending here and the operator can pick again.
+                raise HTTPException(status_code=400, detail=str(error))
+            return {"action": result.action, "concept_id": result.concept_id}
 
     @app.get("/events")
     async def events() -> StreamingResponse:

@@ -1,4 +1,6 @@
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from storage.models import AdjudicationLog, Concept, MergeQueue
@@ -206,3 +208,142 @@ def test_queue_agreement_reports_the_tally(engine, collection):
     payload = TestClient(create_app(engine, collection)).get("/queue/agreement").json()
 
     assert payload == {"agreed": 1, "disagreed": 0, "dismissed": 0}
+
+
+def test_resolving_as_new_creates_a_concept_and_embeds_it(engine, collection):
+    with Session(engine) as session:
+        entry = MergeQueue(candidate_name="beam search", status="pending")
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    payload = client.post(f"/queue/{entry_id}/resolve", json={"action": "new"}).json()
+
+    assert payload["action"] == "new"
+    with Session(engine) as session:
+        concept = session.get(Concept, payload["concept_id"])
+        assert concept.name == "beam search"
+        assert session.get(MergeQueue, entry_id).status == "approved_new"
+    assert collection.get(ids=[str(payload["concept_id"])])["ids"] == [
+        str(payload["concept_id"])
+    ]
+
+
+def test_resolving_as_merge_reinforces_the_target(engine, collection):
+    with Session(engine) as session:
+        concept = Concept(name="beam search", confidence_score=0.5)
+        entry = MergeQueue(candidate_name="beam search decoding", status="pending")
+        session.add_all([concept, entry])
+        session.commit()
+        concept_id, entry_id = concept.id, entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post(
+        f"/queue/{entry_id}/resolve",
+        json={"action": "merge", "target_concept_id": concept_id},
+    )
+
+    assert response.json() == {"action": "merge", "concept_id": concept_id}
+    with Session(engine) as session:
+        # approx, not ==: resolve_entry computes 0.5 + 0.05, which in binary
+        # floating point is 0.55000000000000004.
+        assert session.get(Concept, concept_id).confidence_score == pytest.approx(0.55)
+        assert session.get(MergeQueue, entry_id).status == "approved_merge"
+
+
+def test_resolving_as_dismiss_creates_no_concept(engine, collection):
+    with Session(engine) as session:
+        entry = MergeQueue(candidate_name="vague thing", status="pending")
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    payload = client.post(
+        f"/queue/{entry_id}/resolve", json={"action": "dismiss"}
+    ).json()
+
+    assert payload == {"action": "dismiss", "concept_id": None}
+    with Session(engine) as session:
+        assert session.get(MergeQueue, entry_id).status == "rejected"
+        assert session.scalars(select(Concept)).all() == []
+
+
+def test_resolving_backfills_the_human_resolution_on_the_log(engine, collection):
+    """The tally reads adjudication_log, so this is what makes it move."""
+    with Session(engine) as session:
+        log = AdjudicationLog(candidate_name="beam search", model_decision="new")
+        session.add(log)
+        session.flush()
+        entry = MergeQueue(
+            candidate_name="beam search",
+            status="pending",
+            adjudication_log_id=log.id,
+        )
+        session.add(entry)
+        session.commit()
+        log_id, entry_id = log.id, entry.id
+
+    client = TestClient(create_app(engine, collection))
+    client.post(f"/queue/{entry_id}/resolve", json={"action": "new"})
+
+    with Session(engine) as session:
+        assert session.get(AdjudicationLog, log_id).human_resolution == "approved_new"
+    assert client.get("/queue/agreement").json()["agreed"] == 1
+
+
+def test_resolving_an_unknown_entry_is_a_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/queue/999/resolve", json={"action": "dismiss"})
+
+    assert response.status_code == 404
+
+
+def test_resolving_an_already_resolved_entry_is_a_404(engine, collection):
+    """Two clicks on the same button must not resolve two different things."""
+    with Session(engine) as session:
+        entry = MergeQueue(candidate_name="beam search", status="rejected")
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post(f"/queue/{entry_id}/resolve", json={"action": "dismiss"})
+
+    assert response.status_code == 404
+
+
+def test_merging_without_a_target_is_a_400(engine, collection):
+    with Session(engine) as session:
+        entry = MergeQueue(candidate_name="beam search", status="pending")
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post(f"/queue/{entry_id}/resolve", json={"action": "merge"})
+
+    assert response.status_code == 400
+    with Session(engine) as session:
+        assert session.get(MergeQueue, entry_id).status == "pending"
+
+
+def test_an_unknown_action_is_a_400(engine, collection):
+    with Session(engine) as session:
+        entry = MergeQueue(candidate_name="beam search", status="pending")
+        session.add(entry)
+        session.commit()
+        entry_id = entry.id
+
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post(f"/queue/{entry_id}/resolve", json={"action": "banish"})
+
+    assert response.status_code == 400
