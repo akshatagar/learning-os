@@ -222,6 +222,52 @@ main { padding: var(--step-4); }
   margin: var(--step-3) 0;
 }
 
+.ingest__form { margin: var(--step-3) 0 var(--step-4); }
+/* An engraved field: a cut line under the text, not a box floating on it. */
+.ingest__field {
+  display: block;
+  width: 100%;
+  max-width: 65ch;
+  margin: var(--step-2) 0 var(--step-3);
+  padding: var(--step-2) 0;
+  font-family: var(--body);
+  font-size: 16px;
+  color: var(--line);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.ingest__field:focus-visible { outline: none; border-bottom-width: 2px; }
+.ingest__field:disabled { color: var(--line-muted); }
+
+.ingest__kinds { display: flex; align-items: center; gap: var(--step-3); }
+.ingest__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-1);
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+
+.ingest__history { list-style: none; margin: 0; padding: 0; }
+.ingest__entry {
+  padding: var(--step-2) 0;
+  border-bottom: 1px solid var(--line-hairline);
+}
+.ingest__source { margin: 0; }
+.ingest__meta {
+  margin: var(--step-1) 0 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
 

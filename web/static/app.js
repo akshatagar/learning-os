@@ -1,5 +1,6 @@
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
+import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderQueue } from "./queue.js";
 
@@ -48,6 +49,8 @@ async function openStage(group) {
     await renderQueue(refresh);
   } else if (stage === "concepts") {
     await renderConcepts();
+  } else if (stage === "ingest") {
+    await renderIngest(refresh);
   } else {
     showPlaceholder();
   }
@@ -65,6 +68,8 @@ for (const group of document.querySelectorAll(".stage")) {
 }
 
 document.getElementById("surface-close").addEventListener("click", () => {
+  // A hidden surface must not keep a timer running behind it.
+  stopTicking();
   surface.hidden = true;
   if (opener) opener.focus();
 });
@@ -74,6 +79,11 @@ document.getElementById("surface-close").addEventListener("click", () => {
 connectEvents((event) => {
   if (event.type === "job" && event.status === "failed") showFault(event.id);
   if (event.type === "job" && event.status === "running") fault.hidden = true;
+  // The run that just changed state is the one this surface is showing.
+  if (event.type === "job" && event.kind === "ingest" && !surface.hidden
+      && opener && opener.dataset.stage === "ingest") {
+    renderIngest(refresh);
+  }
   refresh();
 });
 refresh();
