@@ -1,6 +1,7 @@
 import asyncio
 import json
 import queue
+import time
 
 from pathlib import Path
 
@@ -50,6 +51,10 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
             "kind": job.kind,
             "status": job.status,
             "error": job.error,
+            # Computed here because a monotonic timestamp means nothing in
+            # another process. Only meaningful while the job is running; a
+            # finished job's number keeps climbing and no surface shows it.
+            "elapsed_seconds": round(time.monotonic() - job.started_at, 1),
         }
 
     @app.get("/health")
@@ -62,6 +67,13 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
         if fn is None:
             raise HTTPException(status_code=404, detail=f"Unknown job kind: {kind}")
         return _describe(app.state.registry.start(kind, fn))
+
+    # Declared before /jobs/{job_id} on purpose: the parameterised route
+    # would otherwise match the literal path and look up a job called
+    # "running".
+    @app.get("/jobs/running")
+    def running_jobs() -> dict:
+        return {"jobs": [_describe(job) for job in app.state.registry.running_jobs()]}
 
     @app.get("/jobs/{job_id}")
     def job_status(job_id: str) -> dict:

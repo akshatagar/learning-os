@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -347,3 +349,44 @@ def test_an_unknown_action_is_a_400(engine, collection):
     response = client.post(f"/queue/{entry_id}/resolve", json={"action": "banish"})
 
     assert response.status_code == 400
+
+
+def test_a_job_reports_how_long_it_has_been_running(engine, collection):
+    app = create_app(engine, collection)
+    app.state.job_kinds = {"slow": lambda session: None}
+    client = TestClient(app)
+
+    payload = client.post("/jobs/slow").json()
+
+    assert payload["elapsed_seconds"] >= 0
+
+
+def test_running_jobs_are_listable(engine, collection):
+    """A surface opened mid-run has no other way to find the job."""
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, collection, registry=registry)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocker(session):
+        started.set()
+        release.wait(5.0)
+
+    app.state.job_kinds = {"blocker": blocker}
+    client = TestClient(app)
+
+    job_id = client.post("/jobs/blocker").json()["job_id"]
+    started.wait(5.0)
+    try:
+        jobs = client.get("/jobs/running").json()["jobs"]
+        assert [j["job_id"] for j in jobs] == [job_id]
+        assert jobs[0]["kind"] == "blocker"
+    finally:
+        release.set()
+        registry.get(job_id).thread.join(5.0)
+
+
+def test_nothing_running_lists_nothing(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/jobs/running").json() == {"jobs": []}

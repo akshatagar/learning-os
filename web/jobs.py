@@ -1,5 +1,6 @@
 import queue
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -10,6 +11,9 @@ class Job:
     kind: str
     status: str = "running"
     error: str | None = None
+    # Monotonic: this measures a duration and must not move if the system
+    # clock does.
+    started_at: float = field(default_factory=time.monotonic)
     thread: threading.Thread | None = field(default=None, repr=False)
 
 
@@ -32,6 +36,10 @@ class JobRegistry:
     def running_kinds(self) -> set[str]:
         with self._lock:
             return set(self._by_kind)
+
+    def running_jobs(self) -> list[Job]:
+        with self._lock:
+            return list(self._by_kind.values())
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:

@@ -1,4 +1,5 @@
 import threading
+import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -151,3 +152,12 @@ def test_a_finished_job_publishes_its_status(engine):
     assert stream.get(timeout=1.0) == {
         "type": "job", "id": job.id, "kind": "ingest", "status": "done"
     }
+
+
+def test_a_job_records_when_it_started(engine):
+    registry = JobRegistry(_factory(engine))
+    before = time.monotonic()
+
+    job = registry.start("slow", lambda session: None)
+
+    assert before <= job.started_at <= time.monotonic()
