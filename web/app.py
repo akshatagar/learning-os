@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
+from concepts.store import list_concepts
+from goals.gaps import CONFIDENCE_THRESHOLD
+from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
@@ -125,6 +128,49 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 "ingest", lambda session: fn(session, collection, source)
             )
         )
+
+    @app.get("/ingest/history")
+    def ingest_history() -> dict:
+        with Session(engine) as session:
+            return {
+                "entries": [
+                    {
+                        "id": entry.id,
+                        "source_path": entry.source_path,
+                        "source_type": entry.source_type,
+                        "ingested_at": (
+                            entry.ingested_at.isoformat()
+                            if entry.ingested_at
+                            else None
+                        ),
+                        "concept_count": entry.concept_count,
+                    }
+                    for entry in recent_ingests(session)
+                ]
+            }
+
+    @app.get("/concepts")
+    def concepts() -> dict:
+        with Session(engine) as session:
+            return {
+                "concepts": [
+                    {
+                        "id": concept.id,
+                        "name": concept.name,
+                        "category": concept.category,
+                        "confidence_score": concept.confidence_score,
+                        "last_reinforced": (
+                            concept.last_reinforced.isoformat()
+                            if concept.last_reinforced
+                            else None
+                        ),
+                    }
+                    for concept in list_concepts(session)
+                ],
+                # Served rather than hardcoded in JavaScript: goals/gaps.py
+                # is the one authority for where the line sits.
+                "threshold": CONFIDENCE_THRESHOLD,
+            }
 
     @app.get("/queue/next")
     def queue_next() -> dict:

@@ -1,11 +1,12 @@
 import threading
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from storage.models import AdjudicationLog, Concept, MergeQueue
+from storage.models import AdjudicationLog, Concept, ContentLog, MergeQueue
 from web.app import create_app
 from web.jobs import JobRegistry
 
@@ -471,3 +472,63 @@ def test_the_real_ingest_functions_are_wired_by_default(engine, collection):
     app = create_app(engine, collection)
 
     assert set(app.state.ingest_fns) == {"paper", "note"}
+
+
+def test_concepts_are_served_weakest_first(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add_all([
+            Concept(name="Strong", category="Arch", confidence_score=1.0),
+            Concept(name="Weak", category="Arch", confidence_score=0.5),
+        ])
+        session.commit()
+
+    payload = client.get("/concepts").json()
+
+    assert [c["name"] for c in payload["concepts"]] == ["Weak", "Strong"]
+    assert payload["concepts"][0]["category"] == "Arch"
+
+
+def test_the_concept_threshold_comes_from_the_pipeline(engine, collection):
+    """One authority for the value, so the surface cannot drift from goals."""
+    from goals.gaps import CONFIDENCE_THRESHOLD
+
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/concepts").json()["threshold"] == CONFIDENCE_THRESHOLD
+
+
+def test_an_empty_store_serves_an_empty_list(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/concepts").json()["concepts"] == []
+
+
+def test_the_ingest_history_is_newest_first_with_counts(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add_all([
+            ContentLog(
+                source_path="old.pdf", source_type="paper",
+                ingested_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                extracted_concepts="[1, 2]",
+            ),
+            ContentLog(
+                source_path="new.pdf", source_type="paper",
+                ingested_at=datetime(2026, 7, 9, tzinfo=timezone.utc),
+                extracted_concepts="[1, 2, 3]",
+            ),
+        ])
+        session.commit()
+
+    entries = client.get("/ingest/history").json()["entries"]
+
+    assert [e["source_path"] for e in entries] == ["new.pdf", "old.pdf"]
+    assert entries[0]["concept_count"] == 3
+    assert entries[0]["ingested_at"].startswith("2026-07-09")
+
+
+def test_no_ingests_yet_serves_an_empty_list(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/ingest/history").json() == {"entries": []}
