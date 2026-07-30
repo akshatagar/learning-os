@@ -30,6 +30,10 @@ main { padding: var(--step-4); }
   fill: none;
   stroke: var(--line);
   stroke-width: 1.5;
+  /* fill: none means the interior is not a hit target under the SVG default
+     of visiblePainted, which leaves the middle of a stage dead to the click
+     that is supposed to open it. The node is a control; all of it responds. */
+  pointer-events: all;
 }
 /* Engraved, never floating: a cut line plus the light edge it catches. */
 .stage__highlight {
@@ -190,6 +194,33 @@ main { padding: var(--step-4); }
   color: var(--line-muted);
 }
 .gate__model { display: flex; align-items: center; gap: var(--step-3); }
+
+.concepts__list { list-style: none; margin: 0; padding: 0; }
+.concepts__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--step-1) var(--step-3);
+  padding: var(--step-2) 0;
+  border-bottom: 1px solid var(--line-hairline);
+}
+.concepts__name { margin: 0; }
+.concepts__category {
+  grid-row: 2;
+  margin: 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+.concepts__row .meter { grid-column: 2; grid-row: 1 / span 2; }
+/* A cut, not a divider: the line between governed and ungoverned. */
+.concepts__rule {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--step-3) 0;
+}
 
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }

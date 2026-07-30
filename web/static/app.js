@@ -1,3 +1,4 @@
+import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderQueue } from "./queue.js";
@@ -45,6 +46,8 @@ async function openStage(group) {
   surface.hidden = false;
   if (stage === "queue") {
     await renderQueue(refresh);
+  } else if (stage === "concepts") {
+    await renderConcepts();
   } else {
     showPlaceholder();
   }
