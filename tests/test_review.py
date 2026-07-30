@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import select
 
 
+from resolution.adjudicate import MATCH_THRESHOLD, NEW_THRESHOLD
 from resolution.review import (
     agreement_tally,
     format_entry,
@@ -418,3 +419,39 @@ def test_agreement_tally_ignores_uncertain_and_unresolved_rows(session):
     assert agreement_tally(session) == {
         "agreed": 0, "disagreed": 0, "dismissed": 0
     }
+
+
+def _pending_with_decision(session, decision):
+    log = AdjudicationLog(candidate_name="Attention", model_decision=decision)
+    session.add(log)
+    session.flush()
+    session.add(MergeQueue(
+        candidate_name="Attention", status="pending", adjudication_log_id=log.id,
+    ))
+    session.commit()
+
+
+def test_a_match_entry_carries_the_match_threshold(session, collection):
+    _pending_with_decision(session, "match")
+
+    assert next_pending(session, collection).threshold == MATCH_THRESHOLD
+
+
+def test_a_new_entry_carries_the_new_threshold(session, collection):
+    _pending_with_decision(session, "new")
+
+    assert next_pending(session, collection).threshold == NEW_THRESHOLD
+
+
+def test_an_uncertain_entry_carries_no_threshold(session, collection):
+    """Neither branch was reachable, so the number never had a line to cross."""
+    _pending_with_decision(session, "uncertain")
+
+    assert next_pending(session, collection).threshold is None
+
+
+def test_an_entry_with_no_log_carries_no_threshold(session, collection):
+    session.add(MergeQueue(candidate_name="Attention", status="pending"))
+    session.commit()
+
+    assert next_pending(session, collection).threshold is None

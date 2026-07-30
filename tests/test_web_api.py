@@ -532,3 +532,18 @@ def test_no_ingests_yet_serves_an_empty_list(engine, collection):
     client = TestClient(create_app(engine, collection))
 
     assert client.get("/ingest/history").json() == {"entries": []}
+
+
+def test_the_queue_entry_carries_its_governing_threshold(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        log = AdjudicationLog(candidate_name="Attention", model_decision="new")
+        session.add(log)
+        session.flush()
+        session.add(MergeQueue(
+            candidate_name="Attention", status="pending",
+            adjudication_log_id=log.id,
+        ))
+        session.commit()
+
+    assert client.get("/queue/next").json()["entry"]["threshold"] == 0.65

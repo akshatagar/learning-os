@@ -186,6 +186,7 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                     "llm_confidence": view.entry.llm_confidence,
                     "llm_reasoning": view.entry.llm_reasoning,
                     "model_decision": view.model_decision,
+                    "threshold": view.threshold,
                 },
                 "neighbors": view.neighbors,
                 "remaining": view.remaining,

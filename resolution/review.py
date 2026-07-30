@@ -3,7 +3,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from resolution.adjudicate import _query_neighbors
+from resolution.adjudicate import (
+    MATCH_THRESHOLD,
+    NEW_THRESHOLD,
+    _query_neighbors,
+)
 from storage.models import AdjudicationLog, Concept, MergeQueue
 
 HUMAN_CONFIDENCE = 1.0
@@ -20,6 +24,11 @@ _STATUS_BY_ACTION = {
 # it as a miss would measure hedging rather than accuracy.
 _AGREES_WITH = {"match": "approved_merge", "new": "approved_new"}
 
+# The confidence threshold that would have governed this entry, given what
+# the model decided. uncertain has none: neither branch was reachable, so
+# the number never had a line to cross.
+_THRESHOLD_BY_DECISION = {"match": MATCH_THRESHOLD, "new": NEW_THRESHOLD}
+
 
 @dataclass
 class ReviewResult:
@@ -33,6 +42,7 @@ class PendingView:
     neighbors: list[dict]
     remaining: int
     model_decision: str | None
+    threshold: float | None
 
 
 def pending_entries(session) -> list[MergeQueue]:
@@ -67,6 +77,7 @@ def next_pending(session, collection, k=NEIGHBOR_K) -> PendingView | None:
         neighbors=_query_neighbors(collection, entry.candidate_name, k),
         remaining=len(entries),
         model_decision=model_decision,
+        threshold=_THRESHOLD_BY_DECISION.get(model_decision),
     )
 
 

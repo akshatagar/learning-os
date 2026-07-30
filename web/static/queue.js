@@ -1,34 +1,31 @@
 // The merge-queue gate. One entry at a time, in full, because the decision
 // needs the model's reasoning and the live neighbours side by side.
+import { el } from "./dom.js";
+import { meter } from "./meter.js";
+
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
 
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  // textContent, never innerHTML: candidate names and model reasoning are
-  // strings the model wrote, and this page has no business executing them.
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
 function modelLine(entry) {
-  const decision = entry.model_decision
-    ? `MODEL SAID ${entry.model_decision.toUpperCase()}`
-    : "NO RECORDED DECISION";
-  const confidence = entry.llm_confidence === null
-    ? "NO CONFIDENCE"
-    : `CONFIDENCE ${entry.llm_confidence.toFixed(2)}`;
-  return el("p", "gate__model", `${decision} · ${confidence}`);
+  const line = el("p", "gate__model");
+  line.append(
+    entry.model_decision
+      ? `MODEL SAID ${entry.model_decision.toUpperCase()}`
+      : "NO RECORDED DECISION",
+  );
+  // The tick sits at whichever threshold governed this entry's branch, which
+  // is why the server sends it rather than the page assuming one.
+  line.appendChild(meter(entry.llm_confidence, entry.threshold));
+  return line;
 }
 
 function neighborRow(neighbor, onMerge) {
   const row = el("li", "gate__neighbor");
   row.appendChild(el("span", "gate__neighbor-id", `#${neighbor.id}`));
   row.appendChild(el("span", "gate__neighbor-name", neighbor.name));
-  row.appendChild(
-    el("span", "gate__neighbor-score", neighbor.similarity_score.toFixed(2)),
-  );
+  // No tick: similarity is context for the model's prompt and is never
+  // compared to a constant anywhere in the pipeline.
+  row.appendChild(meter(neighbor.similarity_score, null, "similarity"));
   // The id travels with the button, so two concepts sharing a name are still
   // two unambiguous choices.
   row.appendChild(actionButton("MERGE", () => onMerge(neighbor.id)));

@@ -168,13 +168,28 @@ main { padding: var(--step-4); }
 }
 .gate__neighbor-id { color: var(--line-muted); }
 .gate__neighbor-name { flex: 1; }
-.gate__neighbor-score { color: var(--line-muted); }
 
 .gate__actions {
   display: flex;
   gap: var(--step-2);
   margin-top: var(--step-3);
 }
+
+/* The meter. Data, not a lamp: no colour, and the tick only appears where a
+   threshold actually governs behaviour. */
+.meter { display: inline-flex; align-items: center; gap: var(--step-2); }
+.meter__scale { overflow: visible; }
+.meter__track { stroke: var(--line-hairline); stroke-width: 1; }
+.meter__fill { stroke: var(--line); stroke-width: 3; }
+.meter__tick { stroke: var(--line); stroke-width: 1; }
+.meter__value {
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+.gate__model { display: flex; align-items: center; gap: var(--step-3); }
 
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
