@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
+from ingestion.notes import ingest_note
+from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
 from resolution.review import agreement_tally, next_pending, resolve_entry
 from storage.models import MergeQueue
@@ -33,6 +35,14 @@ class ResolveRequest(BaseModel):
     target_concept_id: int | None = None
 
 
+class IngestRequest(BaseModel):
+    # kind is a plain str, not a Literal: Pydantic would reject an unknown
+    # value with 422 before the handler runs, and this application answers
+    # a well-formed request naming something invalid with 400.
+    source: str
+    kind: str
+
+
 def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
     app = FastAPI(title="learning-os")
     app.state.engine = engine
@@ -42,6 +52,10 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
     # Copied onto app.state rather than read from the module constant, so a
     # test can register a fast fake kind without touching the real one.
     app.state.job_kinds = dict(JOB_KINDS)
+
+    # Copied onto app.state for the same reason job_kinds is: so a test can
+    # substitute a fast fake without reaching Docling or Ollama.
+    app.state.ingest_fns = {"paper": ingest_paper, "note": ingest_note}
 
     def _describe(job) -> dict:
         # error rides along with status: a failure the panel cannot name is
@@ -90,6 +104,27 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
             return panel_state(
                 session, running_kinds=app.state.registry.running_kinds()
             )
+
+    @app.post("/ingest")
+    def ingest(request: IngestRequest) -> dict:
+        fn = app.state.ingest_fns.get(request.kind)
+        if fn is None:
+            raise HTTPException(
+                status_code=400, detail=f"Unknown ingest kind: {request.kind}"
+            )
+        source = request.source.strip()
+        if not source:
+            raise HTTPException(status_code=400, detail="A source is required")
+
+        # Not validated further on purpose. ingest_paper fetches over HTTP or
+        # reads from disk; either fails for reasons only discoverable at fetch
+        # time, and the job's error already carries them to the fault line.
+        collection = app.state.collection
+        return _describe(
+            app.state.registry.start(
+                "ingest", lambda session: fn(session, collection, source)
+            )
+        )
 
     @app.get("/queue/next")
     def queue_next() -> dict:

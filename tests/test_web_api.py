@@ -390,3 +390,84 @@ def test_nothing_running_lists_nothing(engine, collection):
     client = TestClient(create_app(engine, collection))
 
     assert client.get("/jobs/running").json() == {"jobs": []}
+
+
+def _fake_ingest(calls):
+    def fake(session, collection, source):
+        calls.append(source)
+    return fake
+
+
+def test_ingesting_a_paper_starts_a_job_under_the_ingest_kind(engine, collection):
+    """The kind string is load-bearing: web/state.py lamps off flow("ingest")."""
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, collection, registry=registry)
+    calls = []
+    app.state.ingest_fns = {"paper": _fake_ingest(calls), "note": _fake_ingest([])}
+    client = TestClient(app)
+
+    payload = client.post(
+        "/ingest", json={"source": "paper.pdf", "kind": "paper"}
+    ).json()
+
+    assert payload["kind"] == "ingest"
+    registry.get(payload["job_id"]).thread.join(5.0)
+    assert calls == ["paper.pdf"]
+
+
+def test_ingesting_a_note_calls_the_note_pipeline(engine, collection):
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, collection, registry=registry)
+    calls = []
+    app.state.ingest_fns = {"paper": _fake_ingest([]), "note": _fake_ingest(calls)}
+    client = TestClient(app)
+
+    payload = client.post(
+        "/ingest", json={"source": "note.md", "kind": "note"}
+    ).json()
+
+    registry.get(payload["job_id"]).thread.join(5.0)
+    assert calls == ["note.md"]
+
+
+def test_an_unknown_ingest_kind_is_rejected(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/ingest", json={"source": "x.pdf", "kind": "video"})
+
+    assert response.status_code == 400
+
+
+def test_a_blank_source_is_rejected(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/ingest", json={"source": "   ", "kind": "paper"})
+
+    assert response.status_code == 400
+
+
+def test_a_second_ingest_while_one_runs_returns_the_same_job(engine, collection):
+    registry = JobRegistry(lambda: Session(engine))
+    app = create_app(engine, collection, registry=registry)
+    release = threading.Event()
+
+    def blocker(session, collection_, source):
+        release.wait(5.0)
+
+    app.state.ingest_fns = {"paper": blocker, "note": blocker}
+    client = TestClient(app)
+
+    first = client.post("/ingest", json={"source": "a.pdf", "kind": "paper"}).json()
+    second = client.post("/ingest", json={"source": "b.pdf", "kind": "paper"}).json()
+
+    try:
+        assert first["job_id"] == second["job_id"]
+    finally:
+        release.set()
+        registry.get(first["job_id"]).thread.join(5.0)
+
+
+def test_the_real_ingest_functions_are_wired_by_default(engine, collection):
+    app = create_app(engine, collection)
+
+    assert set(app.state.ingest_fns) == {"paper", "note"}
