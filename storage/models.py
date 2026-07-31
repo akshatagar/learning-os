@@ -98,3 +98,20 @@ class Opportunity(Base):
     created_at: Mapped[datetime | None]
     source_concepts: Mapped[str | None]
     execution_plan: Mapped[str | None]
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    goal_id: Mapped[int | None] = mapped_column(ForeignKey("goals.id"))
+    gap: Mapped[str | None]
+    gap_score: Mapped[float | None]
+    # JSON, like every other list in this schema. There are no child tables
+    # here and this list is not the one to introduce the first.
+    results: Mapped[str | None]
+    # A gap whose search or relevance filter failed is stored as a row with an
+    # empty results list, so the surface can tell "nothing worth reading" from
+    # "we never got to look".
+    error: Mapped[str | None]
+    created_at: Mapped[datetime | None]

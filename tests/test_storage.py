@@ -1,8 +1,12 @@
+import json
+from datetime import datetime, timezone
+
+import pytest
 from sqlalchemy import inspect, select
 
 from conftest import _run_migrations
 from storage.db import get_engine, get_session
-from storage.models import Concept
+from storage.models import Concept, Recommendation
 
 EXPECTED_TABLES = {
     "concepts": {
@@ -28,6 +32,9 @@ EXPECTED_TABLES = {
     "opportunities": {
         "id", "title", "description", "skill_match_pct", "missing_skills", "status",
         "required_skills", "created_at", "source_concepts", "execution_plan",
+    },
+    "recommendations": {
+        "id", "goal_id", "gap", "gap_score", "results", "error", "created_at",
     },
 }
 
@@ -99,3 +106,35 @@ def test_embed_concept_and_query_round_trips_to_correct_sqlite_row(session, coll
     row = session.get(Concept, nearest_id)
     assert row.name == "gradient descent"
     assert row.embedding_id == str(ml_concept.id)
+
+
+def test_recommendation_round_trips(session):
+    session.add(Recommendation(
+        goal_id=1,
+        gap="flash attention",
+        gap_score=0.626,
+        results=json.dumps([{"title": "T", "url": "https://x/y",
+                             "snippet": "s", "score": 0.9}]),
+        error=None,
+        created_at=datetime(2026, 7, 31, tzinfo=timezone.utc),
+    ))
+    session.commit()
+
+    stored = session.scalars(select(Recommendation)).one()
+    assert stored.gap == "flash attention"
+    assert stored.gap_score == pytest.approx(0.626)
+    assert json.loads(stored.results)[0]["url"] == "https://x/y"
+    assert stored.error is None
+
+
+def test_recommendation_holds_an_error_with_no_results(session):
+    """A failed gap is a row, not an absence."""
+    session.add(Recommendation(
+        goal_id=1, gap="beam search", gap_score=0.4,
+        results=json.dumps([]), error="search failed: boom",
+    ))
+    session.commit()
+
+    stored = session.scalars(select(Recommendation)).one()
+    assert stored.error == "search failed: boom"
+    assert json.loads(stored.results) == []
