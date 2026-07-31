@@ -1,5 +1,6 @@
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
+import { renderGoals } from "./goals.js";
 import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderQueue } from "./queue.js";
@@ -54,6 +55,8 @@ async function openStage(group) {
     await renderIngest(refresh);
   } else if (stage === "skills") {
     await renderSkills(refresh);
+  } else if (stage === "goals") {
+    await renderGoals();
   } else {
     showPlaceholder();
   }

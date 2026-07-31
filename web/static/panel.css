@@ -304,3 +304,32 @@ main { padding: var(--step-4); }
   color: var(--line-muted);
 }
 .skills__notice { color: var(--line-muted); max-width: 65ch; margin: var(--step-3) 0 0; }
+
+/* The goals view. Read-only, and the only surface where a meter's tick marks
+   a line the operator can act on: below it, nothing in the store matched. */
+.goals__goal { border-bottom: 1px solid var(--line-hairline); padding: var(--step-3) 0; }
+.goals__summary { cursor: pointer; list-style: none; }
+/* The default disclosure triangle is a shape this drawing does not own. */
+.goals__summary::-webkit-details-marker { display: none; }
+.goals__summary::marker { content: ""; }
+
+.goals__category,
+.goals__tally {
+  margin: 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+.goals__description { margin: var(--step-1) 0; max-width: 65ch; }
+.goals__bucket { margin: var(--step-3) 0 0; padding-left: var(--step-3); }
+.goals__requirements { list-style: none; margin: 0; padding: 0; }
+.goals__requirement {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-3);
+  padding: var(--step-1) 0;
+}
+.goals__requirement-name { margin: 0; }
