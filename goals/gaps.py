@@ -1,7 +1,9 @@
 import json
 from dataclasses import dataclass
 
-from storage.models import Concept
+from sqlalchemy import select
+
+from storage.models import Concept, Goal
 
 SIMILARITY_THRESHOLD = 0.70
 CONFIDENCE_THRESHOLD = 0.7
@@ -54,3 +56,20 @@ def concept_gaps(
             present.append(requirement)
 
     return GapResult(present=present, weak=weak, missing=missing, scores=scores)
+
+
+@dataclass
+class GoalGaps:
+    goal: Goal
+    gaps: GapResult
+
+
+def all_goal_gaps(session, collection) -> list[GoalGaps]:
+    """Every goal with its gaps, in the order the panel reads them.
+
+    Priority first, because that is the operator's own ranking, and id as the
+    tiebreak so a run is reproducible rather than dependent on insert order.
+    """
+    goals = session.scalars(select(Goal).order_by(Goal.priority, Goal.id))
+    return [GoalGaps(goal=goal, gaps=concept_gaps(session, collection, goal))
+            for goal in goals]

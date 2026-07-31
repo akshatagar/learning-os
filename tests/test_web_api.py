@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -6,7 +7,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from storage.models import AdjudicationLog, Concept, ContentLog, MergeQueue
+from storage.models import (
+    AdjudicationLog,
+    Concept,
+    ContentLog,
+    Goal,
+    MergeQueue,
+    Skill,
+)
 from web.app import create_app
 from web.jobs import JobRegistry
 
@@ -547,3 +555,169 @@ def test_the_queue_entry_carries_its_governing_threshold(engine, collection):
         session.commit()
 
     assert client.get("/queue/next").json()["entry"]["threshold"] == 0.65
+
+
+def test_skills_are_served_with_their_band_labels(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add_all([
+            Skill(name="docker", proficiency=60.0, source="user_confirmed"),
+            Skill(name="python", proficiency=85.0, source="user_confirmed"),
+        ])
+        session.commit()
+
+    payload = client.get("/skills").json()
+
+    assert [s["name"] for s in payload["skills"]] == ["docker", "python"]
+    assert payload["skills"][0]["band"] == "working"
+    assert payload["skills"][1]["band"] == "strong"
+
+
+def test_the_bands_come_from_the_pipeline(engine, collection):
+    """One authority for the three bands, so the surface cannot drift from
+    the values every score was written against."""
+    from skills.entry import PROFICIENCY_BANDS
+
+    client = TestClient(create_app(engine, collection))
+
+    bands = client.get("/skills").json()["bands"]
+
+    assert [b["key"] for b in bands] == list(PROFICIENCY_BANDS)
+    assert [(b["label"], b["value"]) for b in bands] == [
+        (label, value) for label, value in PROFICIENCY_BANDS.values()
+    ]
+
+
+def test_posting_a_skill_creates_it(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/skills", json={"name": "docker", "band": "w"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] is True
+    assert payload["skill"]["name"] == "docker"
+    assert payload["skill"]["proficiency"] == pytest.approx(60.0)
+    assert payload["skill"]["band"] == "working"
+
+
+def test_posting_a_name_already_on_record_is_not_an_error(engine, collection):
+    """The CLI counts a duplicate under `unchanged`, not as a failure, and the
+    surface needs the existing row back to offer a band change."""
+    client = TestClient(create_app(engine, collection))
+    client.post("/skills", json={"name": "docker", "band": "w"})
+
+    response = client.post("/skills", json={"name": "DOCKER", "band": "s"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] is False
+    assert payload["skill"]["band"] == "working"
+
+
+def test_posting_a_blank_name_is_rejected(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/skills", json={"name": "   ", "band": "w"})
+
+    assert response.status_code == 400
+
+
+def test_posting_an_unknown_band_is_rejected(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/skills", json={"name": "docker", "band": "z"})
+
+    assert response.status_code == 400
+    with Session(engine) as session:
+        assert session.scalars(select(Skill)).all() == []
+
+
+def test_patching_a_skill_changes_its_band(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    created = client.post("/skills", json={"name": "docker", "band": "f"}).json()
+
+    response = client.patch(f"/skills/{created['skill']['id']}", json={"band": "s"})
+
+    assert response.status_code == 200
+    assert response.json()["skill"]["band"] == "strong"
+    assert response.json()["skill"]["proficiency"] == pytest.approx(85.0)
+
+
+def test_patching_an_unknown_skill_is_a_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.patch("/skills/999", json={"band": "s"})
+
+    assert response.status_code == 404
+
+
+def test_patching_with_an_unknown_band_leaves_the_row_alone(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    created = client.post("/skills", json={"name": "docker", "band": "f"}).json()
+
+    response = client.patch(f"/skills/{created['skill']['id']}", json={"band": "z"})
+
+    assert response.status_code == 400
+    assert client.get("/skills").json()["skills"][0]["band"] == "familiar"
+
+
+def test_goals_are_served_with_their_buckets(engine, collection):
+    """The collection is empty, so every requirement is missing — which makes
+    this a test of the serialisation and not of an embedding."""
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add(Goal(
+            description="understand transformers",
+            category="llm-internals",
+            priority=1,
+            concept_requirements=json.dumps(["self-attention", "beam search"]),
+        ))
+        session.commit()
+
+    payload = client.get("/goals").json()
+
+    assert len(payload["goals"]) == 1
+    goal = payload["goals"][0]
+    assert goal["category"] == "llm-internals"
+    assert goal["description"] == "understand transformers"
+    assert goal["priority"] == 1
+    assert goal["missing"] == ["self-attention", "beam search"]
+    assert goal["present"] == []
+    assert goal["weak"] == []
+    assert goal["scores"]["self-attention"] == pytest.approx(0.0)
+
+
+def test_goals_are_served_in_priority_order(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add_all([
+            Goal(description="later", category="b", priority=2,
+                 concept_requirements=json.dumps(["beta"])),
+            Goal(description="sooner", category="a", priority=1,
+                 concept_requirements=json.dumps(["alpha"])),
+        ])
+        session.commit()
+
+    payload = client.get("/goals").json()
+
+    assert [g["description"] for g in payload["goals"]] == ["sooner", "later"]
+
+
+def test_the_goal_thresholds_come_from_the_pipeline(engine, collection):
+    """One authority for both lines, so the meter's tick cannot drift from the
+    rule that actually decides a bucket."""
+    from goals.gaps import CONFIDENCE_THRESHOLD, SIMILARITY_THRESHOLD
+
+    client = TestClient(create_app(engine, collection))
+
+    payload = client.get("/goals").json()
+
+    assert payload["similarity_threshold"] == pytest.approx(SIMILARITY_THRESHOLD)
+    assert payload["confidence_threshold"] == pytest.approx(CONFIDENCE_THRESHOLD)
+
+
+def test_goals_are_empty_when_none_are_seeded(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/goals").json()["goals"] == []

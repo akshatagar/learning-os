@@ -36,7 +36,19 @@ def add_skill(session, name: str, band_key: str) -> tuple[Skill, bool]:
     return skill, True
 
 
-def _band_label(proficiency) -> str:
+def set_proficiency(session, skill, band_key: str) -> Skill:
+    # Validates before it mutates, so a rejected band leaves the row alone and
+    # the caller can pick again — the same contract resolve_entry has.
+    if band_key not in PROFICIENCY_BANDS:
+        raise ValueError(f"Unknown proficiency band: {band_key!r}")
+
+    _, value = PROFICIENCY_BANDS[band_key]
+    skill.proficiency = value
+    session.commit()
+    return skill
+
+
+def band_label(proficiency) -> str:
     for label, value in PROFICIENCY_BANDS.values():
         if proficiency == value:
             return label
@@ -81,7 +93,7 @@ def run_skill_entry_loop(session, input_fn=input) -> dict[str, int]:
 
         existing = find_skill(session, name)
         if existing is not None:
-            label = _band_label(existing.proficiency)
+            label = band_label(existing.proficiency)
             print(f'  "{existing.name}" already on record ({label}).')
             try:
                 answer = input_fn("  update proficiency? [y/N] > ").strip().lower()
@@ -95,11 +107,9 @@ def run_skill_entry_loop(session, input_fn=input) -> dict[str, int]:
             band_key = _prompt_band(input_fn)
             if band_key is None:
                 break
-            new_label, value = PROFICIENCY_BANDS[band_key]
-            existing.proficiency = value
-            session.commit()
+            set_proficiency(session, existing, band_key)
             counts["updated"] += 1
-            print(f"  updated: {existing.name} ({new_label})")
+            print(f"  updated: {existing.name} ({PROFICIENCY_BANDS[band_key][0]})")
             continue
 
         band_key = _prompt_band(input_fn)

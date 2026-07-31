@@ -5,7 +5,7 @@ import pytest
 
 from sqlalchemy import select
 
-from goals.gaps import GapResult, concept_gaps
+from goals.gaps import GapResult, all_goal_gaps, concept_gaps
 from goals.seed import GOAL_SEEDS, seed_goals
 from storage.models import Concept, Goal
 
@@ -196,3 +196,42 @@ def test_concept_gaps_scores_are_zero_for_empty_collection(session, collection):
     result = concept_gaps(session, collection, _goal(["anything", "else"]))
 
     assert result.scores == {"anything": 0.0, "else": 0.0}
+
+
+def test_all_goal_gaps_returns_nothing_when_there_are_no_goals(session, collection):
+    assert all_goal_gaps(session, collection) == []
+
+
+def test_all_goal_gaps_orders_by_priority_then_id(session, collection):
+    session.add_all([
+        Goal(description="third", category="c", priority=2,
+             concept_requirements=json.dumps(["gamma"])),
+        Goal(description="first", category="a", priority=1,
+             concept_requirements=json.dumps(["alpha"])),
+        Goal(description="second", category="b", priority=1,
+             concept_requirements=json.dumps(["beta"])),
+    ])
+    session.commit()
+
+    results = all_goal_gaps(session, collection)
+
+    assert [r.goal.description for r in results] == ["first", "second", "third"]
+
+
+def test_all_goal_gaps_pairs_each_goal_with_its_own_requirements(session, collection):
+    """An empty collection makes every requirement missing, so the pairing is
+    the only thing under test and no embedding has to be trusted."""
+    session.add_all([
+        Goal(description="one", category="a", priority=1,
+             concept_requirements=json.dumps(["alpha", "beta"])),
+        Goal(description="two", category="b", priority=1,
+             concept_requirements=json.dumps(["gamma"])),
+    ])
+    session.commit()
+
+    results = all_goal_gaps(session, collection)
+
+    assert results[0].gaps.missing == ["alpha", "beta"]
+    assert results[1].gaps.missing == ["gamma"]
+    assert results[0].gaps.present == []
+    assert results[0].gaps.scores["alpha"] == pytest.approx(0.0)
