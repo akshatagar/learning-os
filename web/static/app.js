@@ -56,7 +56,7 @@ async function openStage(group) {
   } else if (stage === "skills") {
     await renderSkills(refresh);
   } else if (stage === "goals") {
-    await renderGoals();
+    await renderGoals(refresh);
   } else {
     showPlaceholder();
   }
@@ -89,6 +89,10 @@ connectEvents((event) => {
   if (event.type === "job" && event.kind === "ingest" && !surface.hidden
       && opener && opener.dataset.stage === "ingest") {
     renderIngest(refresh);
+  }
+  if (event.type === "job" && event.kind === "recommend" && !surface.hidden
+      && opener && opener.dataset.stage === "goals") {
+    renderGoals(refresh);
   }
   refresh();
 });
