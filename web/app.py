@@ -18,6 +18,10 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
+from recommend.filter import filter_relevant
+from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
+from recommend.search import search
+from recommend.store import recommendations_for, store_recommendations
 from resolution.review import agreement_tally, next_pending, resolve_entry
 from skills.entry import (
     PROFICIENCY_BANDS,
@@ -53,6 +57,11 @@ class IngestRequest(BaseModel):
     kind: str
 
 
+class RecommendRequest(BaseModel):
+    category: str
+    top: int = DEFAULT_TOP
+
+
 class SkillRequest(BaseModel):
     name: str
     band: str
@@ -75,6 +84,10 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
     # Copied onto app.state for the same reason job_kinds is: so a test can
     # substitute a fast fake without reaching Docling or Ollama.
     app.state.ingest_fns = {"paper": ingest_paper, "note": ingest_note}
+
+    # Copied onto app.state for the same reason job_kinds and ingest_fns are:
+    # so a test can run this job without reaching Tavily or Ollama.
+    app.state.recommend_fns = {"search": search, "filter": filter_relevant}
 
     def _describe(job) -> dict:
         # error rides along with status: a failure the panel cannot name is
@@ -188,6 +201,34 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 "threshold": CONFIDENCE_THRESHOLD,
             }
 
+    @app.post("/recommend")
+    def recommend(request: RecommendRequest) -> dict:
+        if request.top < 1:
+            raise HTTPException(status_code=400, detail="top must be at least 1")
+
+        # Validated here, in the request's session, rather than left to
+        # compute_gaps on the job thread. A bad category is a typo, and a typo
+        # should be a rejected request — not a job that lights the fault line
+        # several seconds later with the message buried in /jobs/{id}.
+        with Session(engine) as session:
+            try:
+                load_goal(session, request.category)
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+
+        collection = app.state.collection
+        fns = app.state.recommend_fns
+        category, top = request.category, request.top
+
+        def run(session):
+            result = recommend_goal(
+                session, collection, category, top=top,
+                search_fn=fns["search"], filter_fn=fns["filter"],
+            )
+            store_recommendations(session, result)
+
+        return _describe(app.state.registry.start("recommend", run))
+
     @app.get("/goals")
     def goals() -> dict:
         # Every goal is computed in one request. Measured at 1.5s for five
@@ -205,6 +246,19 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                         "weak": result.gaps.weak,
                         "missing": result.gaps.missing,
                         "scores": result.gaps.scores,
+                        "recommendations": [
+                            {
+                                "gap": row.gap,
+                                "gap_score": row.gap_score,
+                                "results": json.loads(row.results or "[]"),
+                                "error": row.error,
+                                "created_at": (
+                                    row.created_at.isoformat()
+                                    if row.created_at else None
+                                ),
+                            }
+                            for row in recommendations_for(session, result.goal.id)
+                        ],
                     }
                     for result in all_goal_gaps(session, app.state.collection)
                 ],

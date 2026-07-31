@@ -13,6 +13,7 @@ from storage.models import (
     ContentLog,
     Goal,
     MergeQueue,
+    Recommendation,
     Skill,
 )
 from web.app import create_app
@@ -721,3 +722,110 @@ def test_goals_are_empty_when_none_are_seeded(engine, collection):
     client = TestClient(create_app(engine, collection))
 
     assert client.get("/goals").json()["goals"] == []
+
+
+def _fake_search(query, k=5):
+    from recommend.search import SearchResult
+    return [SearchResult(title=f"On {query}", url=f"https://example.com/{k}",
+                         snippet="snippet", score=0.9)]
+
+
+def _fake_filter(gap, results):
+    return results
+
+
+def _recommend_app(engine, collection):
+    """An app whose recommend job reaches neither Tavily nor Ollama."""
+    app = create_app(engine, collection)
+    app.state.recommend_fns = {"search": _fake_search, "filter": _fake_filter}
+    return app
+
+
+def _seed_goal(engine, category="llm-internals"):
+    with Session(engine) as session:
+        session.add(Goal(description="d", category=category, priority=1,
+                         concept_requirements=json.dumps(["flash attention"])))
+        session.commit()
+
+
+def test_recommend_starts_a_job_under_the_recommend_kind(engine, collection):
+    """The kind string is load-bearing: web/state.py lights goals from it."""
+    _seed_goal(engine)
+    registry = JobRegistry(lambda: Session(engine))
+    app = _recommend_app(engine, collection)
+    app.state.registry = registry
+    client = TestClient(app)
+
+    payload = client.post("/recommend",
+                          json={"category": "llm-internals", "top": 1}).json()
+
+    assert payload["kind"] == "recommend"
+    registry.get(payload["job_id"]).thread.join(10.0)
+
+
+def test_recommend_stores_what_the_run_produced(engine, collection):
+    _seed_goal(engine)
+    registry = JobRegistry(lambda: Session(engine))
+    app = _recommend_app(engine, collection)
+    app.state.registry = registry
+    client = TestClient(app)
+
+    job_id = client.post("/recommend",
+                         json={"category": "llm-internals", "top": 1}).json()["job_id"]
+    registry.get(job_id).thread.join(10.0)
+
+    assert registry.get(job_id).status == "done"
+    with Session(engine) as session:
+        rows = session.scalars(select(Recommendation)).all()
+        assert len(rows) == 1
+        assert rows[0].gap == "flash attention"
+
+
+def test_recommend_rejects_an_unknown_category_before_starting(engine, collection):
+    """A typo must be a 400, not a failed job noticed seconds later."""
+    _seed_goal(engine)
+    client = TestClient(_recommend_app(engine, collection))
+
+    response = client.post("/recommend", json={"category": "nope", "top": 1})
+
+    assert response.status_code == 400
+    assert "llm-internals" in response.json()["detail"]
+
+
+def test_recommend_rejects_a_top_below_one(engine, collection):
+    _seed_goal(engine)
+    client = TestClient(_recommend_app(engine, collection))
+
+    response = client.post("/recommend", json={"category": "llm-internals", "top": 0})
+
+    assert response.status_code == 400
+
+
+def test_goals_carry_their_stored_recommendations(engine, collection):
+    _seed_goal(engine)
+    with Session(engine) as session:
+        goal = session.scalars(select(Goal)).one()
+        session.add(Recommendation(
+            goal_id=goal.id, gap="flash attention", gap_score=0.626,
+            results=json.dumps([{"title": "A paper", "url": "https://example.com/a",
+                                 "snippet": "s", "score": 0.9}]),
+            error=None,
+        ))
+        session.commit()
+
+    goal_payload = TestClient(create_app(engine, collection)).get("/goals").json()["goals"][0]
+
+    assert len(goal_payload["recommendations"]) == 1
+    entry = goal_payload["recommendations"][0]
+    assert entry["gap"] == "flash attention"
+    assert entry["gap_score"] == pytest.approx(0.626)
+    assert entry["results"][0]["url"] == "https://example.com/a"
+    assert entry["error"] is None
+
+
+def test_a_goal_never_recommended_carries_an_empty_list(engine, collection):
+    _seed_goal(engine)
+
+    goal_payload = TestClient(create_app(engine, collection)).get("/goals").json()["goals"][0]
+
+    assert goal_payload["recommendations"] == []
