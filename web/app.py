@@ -19,7 +19,14 @@ from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
 from resolution.review import agreement_tally, next_pending, resolve_entry
-from storage.models import MergeQueue
+from skills.entry import (
+    PROFICIENCY_BANDS,
+    add_skill,
+    band_label,
+    existing_skills,
+    set_proficiency,
+)
+from storage.models import MergeQueue, Skill
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -44,6 +51,15 @@ class IngestRequest(BaseModel):
     # a well-formed request naming something invalid with 400.
     source: str
     kind: str
+
+
+class SkillRequest(BaseModel):
+    name: str
+    band: str
+
+
+class BandRequest(BaseModel):
+    band: str
 
 
 def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
@@ -171,6 +187,58 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 # is the one authority for where the line sits.
                 "threshold": CONFIDENCE_THRESHOLD,
             }
+
+    def _skill(skill) -> dict:
+        return {
+            "id": skill.id,
+            "name": skill.name,
+            "proficiency": skill.proficiency,
+            "band": band_label(skill.proficiency),
+        }
+
+    @app.get("/skills")
+    def skills() -> dict:
+        with Session(engine) as session:
+            return {
+                "skills": [_skill(skill) for skill in existing_skills(session)],
+                # Served rather than hardcoded in JavaScript: PROFICIENCY_BANDS
+                # is the one authority for what the bands are and what they are
+                # worth, and a page holding its own copy would keep working
+                # while silently disagreeing with every score already written.
+                "bands": [
+                    {"key": key, "label": label, "value": value}
+                    for key, (label, value) in PROFICIENCY_BANDS.items()
+                ],
+            }
+
+    @app.post("/skills")
+    def create_skill(request: SkillRequest) -> dict:
+        name = request.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="A skill name is required")
+        with Session(engine) as session:
+            try:
+                skill, created = add_skill(session, name, request.band)
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+            # created=False is not an error. The CLI counts a duplicate under
+            # `unchanged` and so does this: the surface wants the existing row
+            # back so it can offer to change the band.
+            return {"skill": _skill(skill), "created": created}
+
+    @app.patch("/skills/{skill_id}")
+    def update_skill(skill_id: int, request: BandRequest) -> dict:
+        with Session(engine) as session:
+            skill = session.get(Skill, skill_id)
+            if skill is None:
+                raise HTTPException(status_code=404, detail="No skill with that id")
+            try:
+                set_proficiency(session, skill, request.band)
+            except ValueError as error:
+                # set_proficiency validates before it mutates, so the row is
+                # untouched here and the operator can pick again.
+                raise HTTPException(status_code=400, detail=str(error))
+            return {"skill": _skill(skill)}
 
     @app.get("/queue/next")
     def queue_next() -> dict:
