@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from concepts.store import list_concepts
-from goals.gaps import CONFIDENCE_THRESHOLD
+from goals.gaps import CONFIDENCE_THRESHOLD, SIMILARITY_THRESHOLD, all_goal_gaps
 from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
@@ -186,6 +186,34 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 # Served rather than hardcoded in JavaScript: goals/gaps.py
                 # is the one authority for where the line sits.
                 "threshold": CONFIDENCE_THRESHOLD,
+            }
+
+    @app.get("/goals")
+    def goals() -> dict:
+        # Every goal is computed in one request. Measured at 1.5s for five
+        # goals of fourteen requirements against a 16-concept store, which
+        # buys a tally for every goal on open and a free expansion after.
+        with Session(engine) as session:
+            return {
+                "goals": [
+                    {
+                        "id": result.goal.id,
+                        "category": result.goal.category,
+                        "description": result.goal.description,
+                        "priority": result.goal.priority,
+                        "present": result.gaps.present,
+                        "weak": result.gaps.weak,
+                        "missing": result.gaps.missing,
+                        "scores": result.gaps.scores,
+                    }
+                    for result in all_goal_gaps(session, app.state.collection)
+                ],
+                # Served for the same reason the bands are: goals/gaps.py owns
+                # both lines. Note they govern different things — similarity
+                # decides missing from matched, confidence decides weak from
+                # present — and only the first is a scale the meter draws.
+                "similarity_threshold": SIMILARITY_THRESHOLD,
+                "confidence_threshold": CONFIDENCE_THRESHOLD,
             }
 
     def _skill(skill) -> dict:

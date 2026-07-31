@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -6,7 +7,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from storage.models import AdjudicationLog, Concept, ContentLog, MergeQueue, Skill
+from storage.models import (
+    AdjudicationLog,
+    Concept,
+    ContentLog,
+    Goal,
+    MergeQueue,
+    Skill,
+)
 from web.app import create_app
 from web.jobs import JobRegistry
 
@@ -652,3 +660,64 @@ def test_patching_with_an_unknown_band_leaves_the_row_alone(engine, collection):
 
     assert response.status_code == 400
     assert client.get("/skills").json()["skills"][0]["band"] == "familiar"
+
+
+def test_goals_are_served_with_their_buckets(engine, collection):
+    """The collection is empty, so every requirement is missing — which makes
+    this a test of the serialisation and not of an embedding."""
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add(Goal(
+            description="understand transformers",
+            category="llm-internals",
+            priority=1,
+            concept_requirements=json.dumps(["self-attention", "beam search"]),
+        ))
+        session.commit()
+
+    payload = client.get("/goals").json()
+
+    assert len(payload["goals"]) == 1
+    goal = payload["goals"][0]
+    assert goal["category"] == "llm-internals"
+    assert goal["description"] == "understand transformers"
+    assert goal["priority"] == 1
+    assert goal["missing"] == ["self-attention", "beam search"]
+    assert goal["present"] == []
+    assert goal["weak"] == []
+    assert goal["scores"]["self-attention"] == pytest.approx(0.0)
+
+
+def test_goals_are_served_in_priority_order(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        session.add_all([
+            Goal(description="later", category="b", priority=2,
+                 concept_requirements=json.dumps(["beta"])),
+            Goal(description="sooner", category="a", priority=1,
+                 concept_requirements=json.dumps(["alpha"])),
+        ])
+        session.commit()
+
+    payload = client.get("/goals").json()
+
+    assert [g["description"] for g in payload["goals"]] == ["sooner", "later"]
+
+
+def test_the_goal_thresholds_come_from_the_pipeline(engine, collection):
+    """One authority for both lines, so the meter's tick cannot drift from the
+    rule that actually decides a bucket."""
+    from goals.gaps import CONFIDENCE_THRESHOLD, SIMILARITY_THRESHOLD
+
+    client = TestClient(create_app(engine, collection))
+
+    payload = client.get("/goals").json()
+
+    assert payload["similarity_threshold"] == pytest.approx(SIMILARITY_THRESHOLD)
+    assert payload["confidence_threshold"] == pytest.approx(CONFIDENCE_THRESHOLD)
+
+
+def test_goals_are_empty_when_none_are_seeded(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/goals").json()["goals"] == []
