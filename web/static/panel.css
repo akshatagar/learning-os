@@ -279,3 +279,28 @@ main { padding: var(--step-4); }
   #panel { display: none; }
   #panel-narrow { display: block; }
 }
+
+/* The skills gate. No colour: a familiar skill is a fact about the person,
+   not a fault, so nothing here is lit or flagged. */
+.skills__form { margin: var(--step-3) 0 var(--step-4); }
+.skills__bands { display: flex; align-items: center; gap: var(--step-3); }
+
+.skills__list { list-style: none; margin: 0; padding: 0; }
+.skills__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-3);
+  padding: var(--step-2) 0;
+  border-bottom: 1px solid var(--line-hairline);
+}
+.skills__name { margin: 0; }
+.skills__band {
+  margin: 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+.skills__notice { color: var(--line-muted); max-width: 65ch; margin: var(--step-3) 0 0; }
