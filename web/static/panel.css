@@ -333,3 +333,22 @@ main { padding: var(--step-4); }
   padding: var(--step-1) 0;
 }
 .goals__requirement-name { margin: 0; }
+
+/* Recommendations. The one place this system reaches the network, and the
+   notice saying so is ordinary text — marked, not alarming. */
+.recs__notice { margin: var(--step-3) 0 var(--step-2); font-family: var(--legend);
+  font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  color: var(--line-muted); max-width: 65ch; }
+.recs__gap { margin: var(--step-3) 0 0; padding-left: var(--step-3); }
+.recs__results { list-style: none; margin: 0; padding: 0; }
+.recs__result { padding: var(--step-2) 0;
+  border-bottom: 1px solid var(--line-hairline); }
+.recs__link { color: var(--line); text-decoration: underline; }
+.recs__link:focus-visible { outline: 1px solid var(--line); outline-offset: 2px; }
+.recs__host,
+.recs__empty { margin: var(--step-1) 0 0; font-family: var(--legend);
+  font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  color: var(--line-muted); }
+.recs__snippet { margin: var(--step-1) 0 0; color: var(--line-muted);
+  max-width: 65ch; }
+.recs__error { margin: var(--step-2) 0 0; color: var(--line); max-width: 65ch; }
