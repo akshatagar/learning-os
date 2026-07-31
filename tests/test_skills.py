@@ -3,9 +3,11 @@ import pytest
 from skills.entry import (
     PROFICIENCY_BANDS,
     add_skill,
+    band_label,
     existing_skills,
     find_skill,
     run_skill_entry_loop,
+    set_proficiency,
 )
 from storage.models import Skill
 
@@ -186,3 +188,49 @@ def test_loop_aborting_during_the_band_prompt_keeps_earlier_skills(session):
 
     assert counts["added"] == 1
     assert [s.name for s in existing_skills(session)] == ["docker"]
+
+
+def test_set_proficiency_writes_the_bands_value(session):
+    skill, _ = add_skill(session, "docker", "f")
+
+    returned = set_proficiency(session, skill, "s")
+
+    assert returned is skill
+    assert skill.proficiency == pytest.approx(85.0)
+
+
+def test_set_proficiency_persists_the_change(session):
+    skill, _ = add_skill(session, "docker", "f")
+
+    set_proficiency(session, skill, "w")
+    session.expire_all()
+
+    assert find_skill(session, "docker").proficiency == pytest.approx(60.0)
+
+
+def test_set_proficiency_rejects_an_unknown_band(session):
+    skill, _ = add_skill(session, "docker", "f")
+
+    with pytest.raises(ValueError):
+        set_proficiency(session, skill, "z")
+
+
+def test_set_proficiency_leaves_the_row_alone_when_it_rejects(session):
+    """It validates before it mutates, so a bad band is not half-applied."""
+    skill, _ = add_skill(session, "docker", "f")
+
+    with pytest.raises(ValueError):
+        set_proficiency(session, skill, "z")
+
+    session.expire_all()
+    assert find_skill(session, "docker").proficiency == pytest.approx(35.0)
+
+
+def test_band_label_names_each_band(session):
+    assert band_label(85.0) == "strong"
+    assert band_label(60.0) == "working"
+    assert band_label(35.0) == "familiar"
+
+
+def test_band_label_does_not_invent_a_name_for_an_unknown_value(session):
+    assert band_label(50.0) == "unknown"
