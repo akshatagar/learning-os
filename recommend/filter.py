@@ -12,6 +12,8 @@ FILTER_SCHEMA = {
     "required": ["keep"],
 }
 
+MAX_PER_GAP = 3
+
 
 def _build_filter_prompt(gap: str, results: list[SearchResult]) -> str:
     listing = "\n".join(
@@ -45,4 +47,8 @@ def filter_relevant(
     if not results:
         return []
     keep = set(judge_fn(gap, results))
-    return [result for index, result in enumerate(results) if index in keep]
+    kept = [result for index, result in enumerate(results) if index in keep]
+    # Truncating rather than asking the model for three: a count in the prompt is
+    # one more instruction it can ignore, and slicing the front keeps Tavily's
+    # ranking as the tiebreak when it does.
+    return kept[:MAX_PER_GAP]

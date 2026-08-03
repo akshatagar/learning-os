@@ -1,4 +1,9 @@
-from recommend.filter import _build_filter_prompt, call_ollama_filter, filter_relevant
+from recommend.filter import (
+    MAX_PER_GAP,
+    _build_filter_prompt,
+    call_ollama_filter,
+    filter_relevant,
+)
 from recommend.search import SearchResult
 
 
@@ -55,6 +60,31 @@ def test_filter_relevant_can_drop_everything():
     results = [_result("a"), _result("b")]
 
     assert filter_relevant("some gap", results, judge_fn=lambda gap, rs: []) == []
+
+
+def test_filter_relevant_caps_results_at_max_per_gap():
+    results = [_result(name) for name in "abcde"]
+
+    kept = filter_relevant("some gap", results, judge_fn=lambda gap, rs: [0, 1, 2, 3, 4])
+
+    assert len(kept) == MAX_PER_GAP
+
+
+def test_filter_relevant_truncation_keeps_the_highest_ranked():
+    """Incoming order is Tavily's ranking, so truncation must keep the front."""
+    results = [_result(name) for name in "abcde"]
+
+    kept = filter_relevant("some gap", results, judge_fn=lambda gap, rs: [1, 2, 3, 4])
+
+    assert [r.title for r in kept] == ["b", "c", "d"]
+
+
+def test_filter_relevant_leaves_a_short_selection_alone():
+    results = [_result(name) for name in "abcde"]
+
+    kept = filter_relevant("some gap", results, judge_fn=lambda gap, rs: [0, 4])
+
+    assert [r.title for r in kept] == ["a", "e"]
 
 
 def test_build_filter_prompt_indexes_results_and_names_the_gap():
