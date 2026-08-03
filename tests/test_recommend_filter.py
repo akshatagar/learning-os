@@ -97,6 +97,15 @@ def test_build_filter_prompt_indexes_results_and_names_the_gap():
     assert "[1] B Guide" in prompt
 
 
+def test_build_filter_prompt_asks_for_complementary_results():
+    prompt = _build_filter_prompt(
+        "speculative decoding", [_result("A Guide"), _result("B Guide")]
+    )
+
+    assert "complement" in prompt.lower()
+    assert "introduction" in prompt.lower()
+
+
 def test_call_ollama_filter_returns_valid_indices():
     """Live round-trip against a running Ollama."""
     results = [
