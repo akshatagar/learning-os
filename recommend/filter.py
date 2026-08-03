@@ -12,6 +12,8 @@ FILTER_SCHEMA = {
     "required": ["keep"],
 }
 
+MAX_PER_GAP = 3
+
 
 def _build_filter_prompt(gap: str, results: list[SearchResult]) -> str:
     listing = "\n".join(
@@ -26,7 +28,13 @@ def _build_filter_prompt(gap: str, results: list[SearchResult]) -> str:
         "Return the indices of the results that would actually teach this "
         "concept. Keep explanations, tutorials, and papers about the concept. "
         "Drop API reference pages, unrelated results, and pages that merely "
-        "mention the term in passing. Return an empty list if none qualify."
+        "mention the term in passing.\n\n"
+        "The results you keep should complement each other — prefer a set that "
+        "differs in depth or angle over several introductions to the same thing. "
+        "When two results cover the same ground at the same level, keep the "
+        "better one and drop the other. Relevance comes first: never keep a "
+        "result that fails to teach the concept just to add variety.\n\n"
+        "Return an empty list if none qualify."
     )
 
 
@@ -45,4 +53,8 @@ def filter_relevant(
     if not results:
         return []
     keep = set(judge_fn(gap, results))
-    return [result for index, result in enumerate(results) if index in keep]
+    kept = [result for index, result in enumerate(results) if index in keep]
+    # Truncating rather than asking the model for three: a count in the prompt is
+    # one more instruction it can ignore, and slicing the front keeps Tavily's
+    # ranking as the tiebreak when it does.
+    return kept[:MAX_PER_GAP]
