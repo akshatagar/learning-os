@@ -1,5 +1,7 @@
 import json
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 
 from storage.models import Concept, Opportunity
@@ -35,6 +37,34 @@ def source_concept_names(session, opportunity) -> list[str]:
         if concept is not None:
             names.append(concept.name)
     return names
+
+
+@dataclass
+class OpportunityView:
+    opportunity: Opportunity
+    concept_names: list[str]
+
+
+def opportunity_views(session, status=None) -> list[OpportunityView]:
+    """Every opportunity with its source concepts named, newest first.
+
+    Newest first because the ideas a run just wrote are the ones being looked
+    for. The CLI's pending_opportunities keeps its own ascending order; the
+    two differ on purpose.
+
+    Naming the concepts costs a query per row, which is why it happens here
+    and not in the route. Same division as all_goal_gaps in goals/gaps.py.
+    """
+    query = select(Opportunity).order_by(Opportunity.id.desc())
+    if status is not None:
+        query = query.where(Opportunity.status == status)
+    return [
+        OpportunityView(
+            opportunity=opportunity,
+            concept_names=source_concept_names(session, opportunity),
+        )
+        for opportunity in session.scalars(query)
+    ]
 
 
 def format_opportunity(opportunity, concept_names, position, total) -> str:
