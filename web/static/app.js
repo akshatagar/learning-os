@@ -1,3 +1,4 @@
+import { renderApproval } from "./approval.js";
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderGoals } from "./goals.js";
@@ -57,6 +58,8 @@ async function openStage(group) {
     await renderSkills(refresh);
   } else if (stage === "goals") {
     await renderGoals(refresh);
+  } else if (stage === "approval") {
+    await renderApproval(refresh);
   } else {
     showPlaceholder();
   }

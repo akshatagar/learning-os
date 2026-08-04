@@ -352,3 +352,18 @@ main { padding: var(--step-4); }
 .recs__snippet { margin: var(--step-1) 0 0; color: var(--line-muted);
   max-width: 65ch; }
 .recs__error { margin: var(--step-2) 0 0; color: var(--line); max-width: 65ch; }
+
+/* The approval gate. Every pending idea at once — the decision is comparative,
+   so the alternatives have to be on screen with it. */
+.approval__idea {
+  border-bottom: 1px solid var(--line-hairline);
+  padding: var(--step-3) 0;
+}
+.approval__meta {
+  margin: var(--step-1) 0 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
