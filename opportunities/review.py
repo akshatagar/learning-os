@@ -1,5 +1,7 @@
 import json
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 
 from storage.models import Concept, Opportunity
@@ -7,7 +9,14 @@ from storage.models import Concept, Opportunity
 _STATUS_BY_ACTION = {
     "approve": "approved",
     "reject": "rejected",
+    "restore": "generated",
 }
+
+# restore is the only action with a legal starting point. A dropped idea is
+# recoverable because the panel has no confirmation dialogs and DROP is one
+# click; an approved one is not, because scoring and planning may already
+# have written to it.
+_RESTORE_FROM = "rejected"
 
 
 def pending_opportunities(session) -> list[Opportunity]:
@@ -23,6 +32,10 @@ def pending_opportunities(session) -> list[Opportunity]:
 def resolve_opportunity(session, opportunity, action) -> str:
     if action not in _STATUS_BY_ACTION:
         raise ValueError(f"Unknown approval action: {action}")
+    if action == "restore" and opportunity.status != _RESTORE_FROM:
+        raise ValueError(
+            f"Cannot restore an opportunity that is {opportunity.status}"
+        )
     opportunity.status = _STATUS_BY_ACTION[action]
     session.commit()
     return opportunity.status
@@ -35,6 +48,34 @@ def source_concept_names(session, opportunity) -> list[str]:
         if concept is not None:
             names.append(concept.name)
     return names
+
+
+@dataclass
+class OpportunityView:
+    opportunity: Opportunity
+    concept_names: list[str]
+
+
+def opportunity_views(session, status=None) -> list[OpportunityView]:
+    """Every opportunity with its source concepts named, newest first.
+
+    Newest first because the ideas a run just wrote are the ones being looked
+    for. The CLI's pending_opportunities keeps its own ascending order; the
+    two differ on purpose.
+
+    Naming the concepts costs a query per row, which is why it happens here
+    and not in the route. Same division as all_goal_gaps in goals/gaps.py.
+    """
+    query = select(Opportunity).order_by(Opportunity.id.desc())
+    if status is not None:
+        query = query.where(Opportunity.status == status)
+    return [
+        OpportunityView(
+            opportunity=opportunity,
+            concept_names=source_concept_names(session, opportunity),
+        )
+        for opportunity in session.scalars(query)
+    ]
 
 
 def format_opportunity(opportunity, concept_names, position, total) -> str:

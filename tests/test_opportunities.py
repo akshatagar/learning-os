@@ -18,6 +18,7 @@ from opportunities.generate import (
 )
 from opportunities.review import (
     format_opportunity,
+    opportunity_views,
     pending_opportunities,
     resolve_opportunity,
     run_idea_review_loop,
@@ -398,3 +399,70 @@ def test_loop_includes_leftovers_from_an_earlier_run(session):
     counts = run_idea_review_loop(session, input_fn=_scripted("a", "a"))
 
     assert counts["approved"] == 2
+
+
+def test_opportunity_views_are_newest_first(session):
+    """The ideas a run just wrote belong at the top of their group."""
+    _add_idea(session, "older")
+    _add_idea(session, "newer")
+
+    views = opportunity_views(session)
+
+    assert [v.opportunity.title for v in views] == ["newer", "older"]
+
+
+def test_opportunity_views_filter_by_status(session):
+    _add_idea(session, "pending one")
+    _add_idea(session, "already approved", status="approved")
+
+    views = opportunity_views(session, status="generated")
+
+    assert [v.opportunity.title for v in views] == ["pending one"]
+
+
+def test_opportunity_views_name_the_source_concepts(session):
+    concept = Concept(name="LoRA")
+    session.add(concept)
+    session.flush()
+    idea = _add_idea(session)
+    idea.source_concepts = json.dumps([concept.id])
+    session.commit()
+
+    assert opportunity_views(session)[0].concept_names == ["LoRA"]
+
+
+def test_opportunity_views_skip_a_concept_that_no_longer_exists(session):
+    """A deleted concept must not take the whole surface down with it."""
+    idea = _add_idea(session)
+    idea.source_concepts = json.dumps([9999])
+    session.commit()
+
+    assert opportunity_views(session)[0].concept_names == []
+
+
+def test_restore_returns_a_rejected_idea_to_pending(session):
+    idea = _add_idea(session, status="rejected")
+
+    assert resolve_opportunity(session, idea, "restore") == "generated"
+    assert idea.status == "generated"
+
+
+def test_restore_refuses_an_approved_idea(session):
+    """Scoring and planning may already have written to it.
+
+    Un-approving would orphan that work, which is a bigger question than this
+    cycle. The row must be left exactly as it was found.
+    """
+    idea = _add_idea(session, status="approved")
+
+    with pytest.raises(ValueError, match="Cannot restore"):
+        resolve_opportunity(session, idea, "restore")
+
+    assert idea.status == "approved"
+
+
+def test_restore_refuses_an_idea_that_is_already_pending(session):
+    idea = _add_idea(session, status="generated")
+
+    with pytest.raises(ValueError, match="Cannot restore"):
+        resolve_opportunity(session, idea, "restore")

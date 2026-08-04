@@ -13,6 +13,7 @@ from storage.models import (
     ContentLog,
     Goal,
     MergeQueue,
+    Opportunity,
     Recommendation,
     Skill,
 )
@@ -829,3 +830,128 @@ def test_a_goal_never_recommended_carries_an_empty_list(engine, collection):
     goal_payload = TestClient(create_app(engine, collection)).get("/goals").json()["goals"][0]
 
     assert goal_payload["recommendations"] == []
+
+
+def _add_opportunity(engine, title, status="generated", required=None, concepts=None):
+    with Session(engine) as session:
+        opportunity = Opportunity(
+            title=title,
+            description="Does a thing.",
+            status=status,
+            required_skills=json.dumps(required or []),
+            source_concepts=json.dumps(concepts or []),
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(opportunity)
+        session.commit()
+        return opportunity.id
+
+
+def test_ideas_returns_every_opportunity_newest_first(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "older", status="rejected")
+    _add_opportunity(engine, "newer", status="approved")
+
+    payload = client.get("/ideas").json()
+
+    assert [o["title"] for o in payload["opportunities"]] == ["newer", "older"]
+    assert [o["status"] for o in payload["opportunities"]] == ["approved", "rejected"]
+
+
+def test_ideas_names_concepts_and_parses_required_skills(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        concept = Concept(name="LoRA")
+        session.add(concept)
+        session.commit()
+        concept_id = concept.id
+    _add_opportunity(
+        engine, "An idea", required=["python", "pytorch"], concepts=[concept_id]
+    )
+
+    idea = client.get("/ideas").json()["opportunities"][0]
+
+    assert idea["source_concepts"] == ["LoRA"]
+    assert idea["required_skills"] == ["python", "pytorch"]
+
+
+def test_ideas_is_empty_before_anything_is_generated(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/ideas").json() == {"opportunities": []}
+
+
+def test_approval_returns_only_generated_rows(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "waiting")
+    _add_opportunity(engine, "already kept", status="approved")
+    _add_opportunity(engine, "already dropped", status="rejected")
+
+    payload = client.get("/approval").json()
+
+    assert [o["title"] for o in payload["opportunities"]] == ["waiting"]
+
+
+def test_keeping_an_idea_approves_it_and_darkens_the_lamp(engine, collection):
+    """The lamp is the point: resolving the last pending idea must go dark."""
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+    stages = client.get("/state").json()["stages"]
+    assert next(s for s in stages if s["id"] == "approval")["lamp"] == "holding"
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "approve"})
+
+    assert response.status_code == 200
+    assert response.json() == {"id": idea_id, "status": "approved"}
+    stages = client.get("/state").json()["stages"]
+    assert next(s for s in stages if s["id"] == "approval")["lamp"] == "unlit"
+
+
+def test_dropping_an_idea_rejects_it(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "reject"})
+
+    assert response.json()["status"] == "rejected"
+
+
+def test_restoring_a_dropped_idea_makes_it_pending_again(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "dropped", status="rejected")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "restore"})
+
+    assert response.json()["status"] == "generated"
+    assert [o["title"] for o in client.get("/approval").json()["opportunities"]] == [
+        "dropped"
+    ]
+
+
+def test_resolving_an_unknown_id_is_a_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/opportunities/9999/resolve", json={"action": "approve"})
+
+    assert response.status_code == 404
+
+
+def test_an_unknown_action_is_a_400(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "maybe"})
+
+    assert response.status_code == 400
+    assert "approval action" in response.json()["detail"]
+
+
+def test_restoring_an_approved_idea_is_a_400_and_changes_nothing(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "kept", status="approved")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "restore"})
+
+    assert response.status_code == 400
+    assert "Cannot restore" in response.json()["detail"]
+    assert client.get("/ideas").json()["opportunities"][0]["status"] == "approved"

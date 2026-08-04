@@ -18,6 +18,7 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
+from opportunities.review import opportunity_views, resolve_opportunity
 from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
 from recommend.search import search
@@ -30,7 +31,7 @@ from skills.entry import (
     existing_skills,
     set_proficiency,
 )
-from storage.models import MergeQueue, Skill
+from storage.models import MergeQueue, Opportunity, Skill
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -47,6 +48,14 @@ JOB_KINDS = {
 class ResolveRequest(BaseModel):
     action: str
     target_concept_id: int | None = None
+
+
+class ApprovalRequest(BaseModel):
+    # A plain str and not a Literal, for the reason IngestRequest gives below:
+    # Pydantic would reject an unknown value with 422 before the handler runs,
+    # and this application answers a well-formed request naming something
+    # invalid with 400.
+    action: str
 
 
 class IngestRequest(BaseModel):
@@ -269,6 +278,56 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 "similarity_threshold": SIMILARITY_THRESHOLD,
                 "confidence_threshold": CONFIDENCE_THRESHOLD,
             }
+
+    def _opportunity(view) -> dict:
+        opportunity = view.opportunity
+        return {
+            "id": opportunity.id,
+            "title": opportunity.title,
+            "description": opportunity.description,
+            "status": opportunity.status,
+            # Named upstream, because resolving them costs a query per row.
+            "source_concepts": view.concept_names,
+            "required_skills": json.loads(opportunity.required_skills or "[]"),
+        }
+
+    @app.get("/ideas")
+    def ideas() -> dict:
+        with Session(engine) as session:
+            return {
+                "opportunities": [
+                    _opportunity(view) for view in opportunity_views(session)
+                ]
+            }
+
+    # Its own route rather than a filter over /ideas: the gate should not carry
+    # every opportunity ever written in order to render the three that are
+    # waiting. Same one-endpoint-per-surface rule as /skills and /concepts.
+    @app.get("/approval")
+    def approval() -> dict:
+        with Session(engine) as session:
+            return {
+                "opportunities": [
+                    _opportunity(view)
+                    for view in opportunity_views(session, status="generated")
+                ]
+            }
+
+    @app.post("/opportunities/{opportunity_id}/resolve")
+    def opportunity_resolve(opportunity_id: int, request: ApprovalRequest) -> dict:
+        with Session(engine) as session:
+            opportunity = session.get(Opportunity, opportunity_id)
+            if opportunity is None:
+                raise HTTPException(
+                    status_code=404, detail="No opportunity with that id"
+                )
+            try:
+                status = resolve_opportunity(session, opportunity, request.action)
+            except ValueError as error:
+                # resolve_opportunity validates before it mutates, so the row
+                # is untouched here and the operator can pick again.
+                raise HTTPException(status_code=400, detail=str(error))
+            return {"id": opportunity_id, "status": status}
 
     def _skill(skill) -> dict:
         return {
