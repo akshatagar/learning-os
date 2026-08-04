@@ -13,6 +13,7 @@ from storage.models import (
     ContentLog,
     Goal,
     MergeQueue,
+    Opportunity,
     Recommendation,
     Skill,
 )
@@ -829,3 +830,63 @@ def test_a_goal_never_recommended_carries_an_empty_list(engine, collection):
     goal_payload = TestClient(create_app(engine, collection)).get("/goals").json()["goals"][0]
 
     assert goal_payload["recommendations"] == []
+
+
+def _add_opportunity(engine, title, status="generated", required=None, concepts=None):
+    with Session(engine) as session:
+        opportunity = Opportunity(
+            title=title,
+            description="Does a thing.",
+            status=status,
+            required_skills=json.dumps(required or []),
+            source_concepts=json.dumps(concepts or []),
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(opportunity)
+        session.commit()
+        return opportunity.id
+
+
+def test_ideas_returns_every_opportunity_newest_first(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "older", status="rejected")
+    _add_opportunity(engine, "newer", status="approved")
+
+    payload = client.get("/ideas").json()
+
+    assert [o["title"] for o in payload["opportunities"]] == ["newer", "older"]
+    assert [o["status"] for o in payload["opportunities"]] == ["approved", "rejected"]
+
+
+def test_ideas_names_concepts_and_parses_required_skills(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    with Session(engine) as session:
+        concept = Concept(name="LoRA")
+        session.add(concept)
+        session.commit()
+        concept_id = concept.id
+    _add_opportunity(
+        engine, "An idea", required=["python", "pytorch"], concepts=[concept_id]
+    )
+
+    idea = client.get("/ideas").json()["opportunities"][0]
+
+    assert idea["source_concepts"] == ["LoRA"]
+    assert idea["required_skills"] == ["python", "pytorch"]
+
+
+def test_ideas_is_empty_before_anything_is_generated(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/ideas").json() == {"opportunities": []}
+
+
+def test_approval_returns_only_generated_rows(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "waiting")
+    _add_opportunity(engine, "already kept", status="approved")
+    _add_opportunity(engine, "already dropped", status="rejected")
+
+    payload = client.get("/approval").json()
+
+    assert [o["title"] for o in payload["opportunities"]] == ["waiting"]

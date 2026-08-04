@@ -18,6 +18,7 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
+from opportunities.review import opportunity_views
 from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
 from recommend.search import search
@@ -30,7 +31,7 @@ from skills.entry import (
     existing_skills,
     set_proficiency,
 )
-from storage.models import MergeQueue, Skill
+from storage.models import MergeQueue, Opportunity, Skill
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -268,6 +269,40 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 # present — and only the first is a scale the meter draws.
                 "similarity_threshold": SIMILARITY_THRESHOLD,
                 "confidence_threshold": CONFIDENCE_THRESHOLD,
+            }
+
+    def _opportunity(view) -> dict:
+        opportunity = view.opportunity
+        return {
+            "id": opportunity.id,
+            "title": opportunity.title,
+            "description": opportunity.description,
+            "status": opportunity.status,
+            # Named upstream, because resolving them costs a query per row.
+            "source_concepts": view.concept_names,
+            "required_skills": json.loads(opportunity.required_skills or "[]"),
+        }
+
+    @app.get("/ideas")
+    def ideas() -> dict:
+        with Session(engine) as session:
+            return {
+                "opportunities": [
+                    _opportunity(view) for view in opportunity_views(session)
+                ]
+            }
+
+    # Its own route rather than a filter over /ideas: the gate should not carry
+    # every opportunity ever written in order to render the three that are
+    # waiting. Same one-endpoint-per-surface rule as /skills and /concepts.
+    @app.get("/approval")
+    def approval() -> dict:
+        with Session(engine) as session:
+            return {
+                "opportunities": [
+                    _opportunity(view)
+                    for view in opportunity_views(session, status="generated")
+                ]
             }
 
     def _skill(skill) -> dict:
