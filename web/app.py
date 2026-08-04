@@ -18,6 +18,8 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
+from opportunities.feasibility import scoring_board
+from opportunities.planning import planning_board
 from opportunities.review import opportunity_views, resolve_opportunity
 from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
@@ -311,6 +313,41 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                     _opportunity(view)
                     for view in opportunity_views(session, status="generated")
                 ]
+            }
+
+    def _scoring_row(opportunity) -> dict:
+        return {
+            "id": opportunity.id,
+            "title": opportunity.title,
+            "skill_match_pct": opportunity.skill_match_pct,
+            "missing_skills": json.loads(opportunity.missing_skills or "[]"),
+        }
+
+    @app.get("/scoring")
+    def scoring() -> dict:
+        with Session(engine) as session:
+            board = scoring_board(session)
+            return {
+                "scored": [_scoring_row(row) for row in board.scored],
+                "waiting": [_scoring_row(row) for row in board.waiting],
+                "unscorable": [_scoring_row(row) for row in board.unscorable],
+            }
+
+    def _planning_row(opportunity) -> dict:
+        return {
+            "id": opportunity.id,
+            "title": opportunity.title,
+            "execution_plan": json.loads(opportunity.execution_plan or "[]"),
+        }
+
+    @app.get("/planning")
+    def planning() -> dict:
+        with Session(engine) as session:
+            board = planning_board(session)
+            return {
+                "planned": [_planning_row(row) for row in board.planned],
+                "waiting": [_planning_row(row) for row in board.waiting],
+                "blocked": [_planning_row(row) for row in board.blocked],
             }
 
     @app.post("/opportunities/{opportunity_id}/resolve")
