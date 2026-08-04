@@ -4,6 +4,9 @@ from sqlalchemy import select
 
 from resolution.adjudicate import MATCH_THRESHOLD, NEW_THRESHOLD
 from resolution.review import (
+    LOG_PAGE,
+    adjudication_count,
+    adjudication_views,
     agreement_tally,
     format_entry,
     next_pending,
@@ -455,3 +458,115 @@ def test_an_entry_with_no_log_carries_no_threshold(session, collection):
     session.commit()
 
     assert next_pending(session, collection).threshold is None
+
+
+def _log(session, name, decision, confidence=0.85, human=None):
+    log = AdjudicationLog(
+        candidate_name=name,
+        model_decision=decision,
+        model_confidence=confidence,
+        model_reasoning="Because.",
+        human_resolution=human,
+    )
+    session.add(log)
+    session.commit()
+    return log
+
+
+def test_adjudication_views_are_newest_first(session):
+    _log(session, "older", "new")
+    _log(session, "newer", "new")
+
+    views = adjudication_views(session)
+
+    assert [v.log.candidate_name for v in views] == ["newer", "older"]
+
+
+def test_an_unlinked_new_row_was_created_automatically(session):
+    _log(session, "Attention Mechanism", "new")
+
+    assert adjudication_views(session)[0].outcome == "created"
+
+
+def test_an_unlinked_match_row_was_merged_automatically(session):
+    _log(session, "multi-head attention", "match")
+
+    assert adjudication_views(session)[0].outcome == "merged"
+
+
+def test_a_row_with_a_queue_entry_was_queued(session):
+    """Read from the link, not re-derived from the thresholds.
+
+    Re-deriving would make every historical row re-report itself if a
+    threshold ever moved, in the one surface whose job is to be accurate.
+    """
+    log = _log(session, "Auto-regressive property", "uncertain", confidence=0.25)
+    session.add(MergeQueue(
+        candidate_name="Auto-regressive property",
+        status="pending",
+        adjudication_log_id=log.id,
+    ))
+    session.commit()
+
+    assert adjudication_views(session)[0].outcome == "queued"
+
+
+def test_a_high_confidence_row_that_was_queued_still_reads_as_queued(session):
+    """The link is the fact; the confidence is not evidence about the outcome."""
+    log = _log(session, "Beam search", "new", confidence=0.99)
+    session.add(MergeQueue(
+        candidate_name="Beam search", status="pending", adjudication_log_id=log.id
+    ))
+    session.commit()
+
+    assert adjudication_views(session)[0].outcome == "queued"
+
+
+def test_an_unlinked_uncertain_row_is_an_anomaly(session):
+    """resolve_candidate always queues an uncertain call, so this cannot happen.
+
+    Falling through to "created" would put a fabricated outcome in an audit
+    trail. It has to read as unknown instead.
+    """
+    _log(session, "impossible", "uncertain", confidence=0.25)
+
+    assert adjudication_views(session)[0].outcome == "unknown"
+
+
+def test_a_new_row_carries_the_new_threshold(session):
+    _log(session, "Beam search", "new")
+
+    assert adjudication_views(session)[0].threshold == NEW_THRESHOLD
+
+
+def test_a_match_row_carries_the_match_threshold(session):
+    _log(session, "multi-head attention", "match")
+
+    assert adjudication_views(session)[0].threshold == MATCH_THRESHOLD
+
+
+def test_an_uncertain_row_carries_no_threshold(session):
+    """Neither branch was reachable, so the number never had a line to cross."""
+    _log(session, "Auto-regressive property", "uncertain", confidence=0.25)
+
+    assert adjudication_views(session)[0].threshold is None
+
+
+def test_adjudication_views_respect_the_limit(session):
+    for index in range(5):
+        _log(session, f"candidate {index}", "new")
+
+    assert len(adjudication_views(session, limit=3)) == 3
+
+
+def test_adjudication_count_ignores_the_limit(session):
+    """This is what makes the truncation line honest rather than decorative."""
+    for index in range(5):
+        _log(session, f"candidate {index}", "new")
+
+    assert len(adjudication_views(session, limit=3)) == 3
+    assert adjudication_count(session) == 5
+
+
+def test_log_page_is_the_default_limit(session):
+    assert LOG_PAGE == 100

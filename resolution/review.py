@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from resolution.adjudicate import (
     MATCH_THRESHOLD,
@@ -28,6 +28,68 @@ _AGREES_WITH = {"match": "approved_merge", "new": "approved_new"}
 # the model decided. uncertain has none: neither branch was reachable, so
 # the number never had a line to cross.
 _THRESHOLD_BY_DECISION = {"match": MATCH_THRESHOLD, "new": NEW_THRESHOLD}
+
+# Every candidate from every ingested document lands in the log permanently,
+# so the surface reads a page rather than the lot.
+LOG_PAGE = 100
+
+# The outcome the log itself does not record, keyed on what actually happened
+# rather than on what the thresholds would say today.
+_OUTCOME_BY_DECISION = {"match": "merged", "new": "created"}
+
+
+@dataclass
+class AdjudicationView:
+    log: AdjudicationLog
+    outcome: str
+    threshold: float | None
+
+
+def adjudication_count(session) -> int:
+    return session.scalar(select(func.count()).select_from(AdjudicationLog))
+
+
+def adjudication_views(session, limit=LOG_PAGE) -> list[AdjudicationView]:
+    """The audit trail of automatic decisions, newest first.
+
+    The outcome is read from the merge-queue link, never re-derived from the
+    thresholds. resolve_candidate writes the log and then either applies the
+    change or queues with adjudication_log_id set, so a linked row existing IS
+    "this was queued" - a recorded fact rather than a reconstruction that would
+    silently re-report history if a threshold moved.
+
+    Ordered by id, not created_at: that column is nullable, and an audit trail
+    must not reorder itself around a missing timestamp.
+    """
+    logs = list(
+        session.scalars(
+            select(AdjudicationLog)
+            .order_by(AdjudicationLog.id.desc())
+            .limit(limit)
+        )
+    )
+    queued = set(
+        session.scalars(
+            select(MergeQueue.adjudication_log_id).where(
+                MergeQueue.adjudication_log_id.in_([log.id for log in logs])
+            )
+        )
+    )
+
+    return [
+        AdjudicationView(
+            log=log,
+            # unknown is the anomaly branch: an unlinked row that is neither
+            # match nor new cannot come from resolve_candidate, and guessing
+            # "created" would be a fabricated record.
+            outcome=(
+                "queued" if log.id in queued
+                else _OUTCOME_BY_DECISION.get(log.model_decision, "unknown")
+            ),
+            threshold=_THRESHOLD_BY_DECISION.get(log.model_decision),
+        )
+        for log in logs
+    ]
 
 
 @dataclass
