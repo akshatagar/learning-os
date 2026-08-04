@@ -17,7 +17,7 @@ from storage.models import (
     Recommendation,
     Skill,
 )
-from web.app import create_app
+from web.app import JOB_KINDS, create_app
 from web.jobs import JobRegistry
 
 
@@ -832,14 +832,20 @@ def test_a_goal_never_recommended_carries_an_empty_list(engine, collection):
     assert goal_payload["recommendations"] == []
 
 
-def _add_opportunity(engine, title, status="generated", required=None, concepts=None):
+def _add_opportunity(engine, title, status="generated", required=None, concepts=None,
+                     pct=None, missing=None, plan=None):
     with Session(engine) as session:
         opportunity = Opportunity(
             title=title,
             description="Does a thing.",
             status=status,
-            required_skills=json.dumps(required or []),
+            # `is not None` rather than `or []`: an explicitly-passed empty
+            # list must stay empty, and that is exactly the unscorable case.
+            required_skills=json.dumps(required if required is not None else []),
             source_concepts=json.dumps(concepts or []),
+            skill_match_pct=pct,
+            missing_skills=None if missing is None else json.dumps(missing),
+            execution_plan=None if plan is None else json.dumps(plan),
             created_at=datetime.now(timezone.utc),
         )
         session.add(opportunity)
@@ -955,3 +961,83 @@ def test_restoring_an_approved_idea_is_a_400_and_changes_nothing(engine, collect
     assert response.status_code == 400
     assert "Cannot restore" in response.json()["detail"]
     assert client.get("/ideas").json()["opportunities"][0]["status"] == "approved"
+
+
+def test_scoring_lists_a_scored_row_with_its_missing_skills(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "scored", status="approved",
+                     required=["Python", "SQL"], pct=50.0, missing=["SQL"])
+
+    payload = client.get("/scoring").json()
+
+    assert [r["title"] for r in payload["scored"]] == ["scored"]
+    assert payload["scored"][0]["skill_match_pct"] == 50.0
+    assert payload["scored"][0]["missing_skills"] == ["SQL"]
+
+
+def test_scoring_separates_waiting_from_unscorable(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "waiting", status="approved", required=["Python"])
+    _add_opportunity(engine, "unscorable", status="approved", required=[])
+
+    payload = client.get("/scoring").json()
+
+    assert [r["title"] for r in payload["waiting"]] == ["waiting"]
+    assert [r["title"] for r in payload["unscorable"]] == ["unscorable"]
+
+
+def test_planning_returns_the_plan_as_a_parsed_list(engine, collection):
+    """A JSON string here would make the surface parse it, which is web's job."""
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "planned", status="approved", pct=100.0,
+                     plan=[{"title": "Ship it", "kind": "build", "detail": "Ship."}])
+
+    payload = client.get("/planning").json()
+
+    assert payload["planned"][0]["execution_plan"] == [
+        {"title": "Ship it", "kind": "build", "detail": "Ship."}
+    ]
+
+
+def test_planning_names_the_rows_blocked_on_scoring(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_opportunity(engine, "not scored", status="approved", required=["Python"])
+
+    payload = client.get("/planning").json()
+
+    assert [r["title"] for r in payload["blocked"]] == ["not scored"]
+    assert payload["waiting"] == []
+
+
+def test_scoring_and_planning_are_registered_job_kinds():
+    """The lamps in web/state.py have referred to these names since 8a-1."""
+    assert set(JOB_KINDS) == {
+        "generate-ideas", "score-opportunities", "plan-opportunities"
+    }
+
+
+def test_starting_the_scoring_job_runs_the_registered_function(engine, collection):
+    """Substituted through app.state.job_kinds so the real one never reaches Ollama."""
+    app = create_app(engine, collection)
+    ran = threading.Event()
+    app.state.job_kinds["score-opportunities"] = lambda session: ran.set()
+    client = TestClient(app)
+
+    response = client.post("/jobs/score-opportunities")
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "score-opportunities"
+    assert ran.wait(timeout=5)
+
+
+def test_starting_the_planning_job_runs_the_registered_function(engine, collection):
+    app = create_app(engine, collection)
+    ran = threading.Event()
+    app.state.job_kinds["plan-opportunities"] = lambda session: ran.set()
+    client = TestClient(app)
+
+    response = client.post("/jobs/plan-opportunities")
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "plan-opportunities"
+    assert ran.wait(timeout=5)

@@ -9,6 +9,7 @@ from opportunities.feasibility import (
     call_ollama_match,
     score_all,
     score_opportunity,
+    scoring_board,
     skill_names,
     unscored_approved,
 )
@@ -313,3 +314,57 @@ def test_score_all_keeps_scores_written_before_a_failure(session):
         score_all(session, match_fn=match_fn)
 
     assert first.skill_match_pct == 100.0
+
+
+def test_scoring_board_puts_a_scored_row_in_scored(session):
+    _add_opportunity(session, "done", skill_match_pct=66.7)
+
+    board = scoring_board(session)
+
+    assert [o.title for o in board.scored] == ["done"]
+    assert board.waiting == []
+    assert board.unscorable == []
+
+
+def test_scoring_board_puts_an_unscored_row_with_requirements_in_waiting(session):
+    _add_opportunity(session, "next up", required=("Python",))
+
+    board = scoring_board(session)
+
+    assert [o.title for o in board.waiting] == ["next up"]
+    assert board.scored == []
+
+
+def test_scoring_board_calls_an_empty_requirement_list_unscorable(session):
+    """score_opportunity returns None for these, so they never leave waiting.
+
+    Rendering one as merely waiting would make a permanent stall look like a
+    queue that is about to move.
+    """
+    _add_opportunity(session, "no requirements", required=())
+
+    board = scoring_board(session)
+
+    assert [o.title for o in board.unscorable] == ["no requirements"]
+    assert board.waiting == []
+
+
+def test_scoring_board_calls_null_required_skills_unscorable(session):
+    opportunity = _add_opportunity(session, "null requirements")
+    opportunity.required_skills = None
+    session.commit()
+
+    board = scoring_board(session)
+
+    assert [o.title for o in board.unscorable] == ["null requirements"]
+
+
+def test_scoring_board_ignores_rows_that_are_not_approved(session):
+    _add_opportunity(session, "pending", status="generated")
+    _add_opportunity(session, "dropped", status="rejected")
+
+    board = scoring_board(session)
+
+    assert board.scored == []
+    assert board.waiting == []
+    assert board.unscorable == []

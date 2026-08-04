@@ -1,5 +1,7 @@
 import json
 
+from dataclasses import dataclass
+
 import ollama
 from sqlalchemy import select
 
@@ -16,6 +18,38 @@ def unplanned_approved(session) -> list[Opportunity]:
             .where(Opportunity.execution_plan.is_(None))
             .order_by(Opportunity.id)
         )
+    )
+
+
+def planned_approved(session) -> list[Opportunity]:
+    return list(
+        session.scalars(
+            select(Opportunity)
+            .where(Opportunity.status == "approved")
+            .where(Opportunity.execution_plan.is_not(None))
+            .order_by(Opportunity.id)
+        )
+    )
+
+
+@dataclass
+class PlanningBoard:
+    planned: list[Opportunity]
+    waiting: list[Opportunity]
+    blocked: list[Opportunity]
+
+
+def planning_board(session) -> PlanningBoard:
+    """Every approved opportunity planning can see, split by what holds it.
+
+    blocked is unscored_approved unchanged. Those rows never reach
+    unplanned_approved, so naming them here is the only way the surface can
+    say why a row is not planned.
+    """
+    return PlanningBoard(
+        planned=planned_approved(session),
+        waiting=unplanned_approved(session),
+        blocked=unscored_approved(session),
     )
 
 

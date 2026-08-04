@@ -14,15 +14,19 @@ function node(name, attrs) {
   return element;
 }
 
-function describe(value, threshold, label) {
+function describe(value, threshold, label, format) {
   if (value === null) return `${label} not recorded`;
-  const reading = `${label} ${value.toFixed(2)}`;
+  const reading = `${label} ${format(value)}`;
   if (threshold === null) return reading;
   return `${reading}, ${value >= threshold ? "at or above" : "below"}`
     + ` the ${threshold} threshold`;
 }
 
-export function meter(value, threshold = null, label = "confidence") {
+// format governs the numeral and the aria-label together. Formatting only the
+// visible one would have a screen reader announce "skill match 0.67" while the
+// screen reads 67%.
+export function meter(value, threshold = null, label = "confidence",
+                      format = (v) => v.toFixed(2)) {
   const scale = node("svg", {
     class: "meter__scale",
     viewBox: `0 0 ${WIDTH} ${HEIGHT}`,
@@ -30,7 +34,7 @@ export function meter(value, threshold = null, label = "confidence") {
     height: HEIGHT,
     role: "img",
     // A meter that communicates only by bar length is not readable.
-    "aria-label": describe(value, threshold, label),
+    "aria-label": describe(value, threshold, label, format),
   });
 
   scale.appendChild(node("line", {
@@ -57,7 +61,7 @@ export function meter(value, threshold = null, label = "confidence") {
 
   const numeral = document.createElement("span");
   numeral.className = "meter__value";
-  numeral.textContent = value === null ? "NO CONFIDENCE" : value.toFixed(2);
+  numeral.textContent = value === null ? "NO CONFIDENCE" : format(value);
   wrap.appendChild(numeral);
 
   return wrap;

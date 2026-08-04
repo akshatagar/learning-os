@@ -11,6 +11,7 @@ from opportunities.planning import (
     format_plan,
     plan_all,
     plan_opportunity,
+    planning_board,
     show_plan,
     unplanned_approved,
 )
@@ -459,3 +460,58 @@ def test_plan_all_keeps_plans_written_before_a_failure(session):
         plan_all(session, plan_fn=plan_fn)
 
     assert first.execution_plan is not None
+
+
+def test_planning_board_puts_a_planned_row_in_planned(session):
+    _add_opportunity(session, "done", execution_plan=json.dumps(
+        [{"title": "Ship it", "kind": "build", "detail": "Ship."}]
+    ))
+
+    board = planning_board(session)
+
+    assert [o.title for o in board.planned] == ["done"]
+    assert board.blocked == []
+
+
+def test_planning_board_puts_a_scored_unplanned_row_in_waiting(session):
+    _add_opportunity(session, "next up", skill_match_pct=50.0)
+
+    board = planning_board(session)
+
+    assert [o.title for o in board.waiting] == ["next up"]
+    assert board.planned == []
+    assert board.blocked == []
+
+
+def test_planning_board_blocks_on_an_unscored_row(session):
+    """These rows are invisible to unplanned_approved entirely.
+
+    Without naming them the surface could not answer "why is this one not
+    planned?" - which is the warning plan_all prints and a job thread eats.
+    """
+    _add_opportunity(session, "not scored", skill_match_pct=None)
+
+    board = planning_board(session)
+
+    assert [o.title for o in board.blocked] == ["not scored"]
+    assert board.waiting == []
+
+
+def test_planning_board_counts_an_unscorable_row_as_blocked(session):
+    """It is genuinely unscored, whatever the reason it will stay that way."""
+    _add_opportunity(session, "no requirements", required=(), skill_match_pct=None)
+
+    board = planning_board(session)
+
+    assert [o.title for o in board.blocked] == ["no requirements"]
+
+
+def test_planning_board_does_not_list_a_planned_row_as_waiting(session):
+    _add_opportunity(session, "done", skill_match_pct=50.0, execution_plan=json.dumps(
+        [{"title": "Ship it", "kind": "build", "detail": "Ship."}]
+    ))
+
+    board = planning_board(session)
+
+    assert [o.title for o in board.planned] == ["done"]
+    assert board.waiting == []
