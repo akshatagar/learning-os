@@ -18,8 +18,8 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
-from opportunities.feasibility import scoring_board
-from opportunities.planning import planning_board
+from opportunities.feasibility import score_all, scoring_board
+from opportunities.planning import plan_all, planning_board
 from opportunities.review import opportunity_views, resolve_opportunity
 from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
@@ -40,10 +40,12 @@ from web.state import panel_state
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 15.0
 
-# One kind in 8a-1, enough to prove the path end to end. 8b-8d register
-# ingest, recommend, score, and plan as those surfaces are built.
+# One kind in 8a-1, enough to prove the path end to end. ingest and recommend
+# took dedicated routes; these two are the rest of what 8b-8d owed.
 JOB_KINDS = {
     "generate-ideas": lambda session: generate_ideas(session),
+    "score-opportunities": lambda session: score_all(session),
+    "plan-opportunities": lambda session: plan_all(session),
 }
 
 

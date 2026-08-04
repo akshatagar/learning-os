@@ -17,7 +17,7 @@ from storage.models import (
     Recommendation,
     Skill,
 )
-from web.app import create_app
+from web.app import JOB_KINDS, create_app
 from web.jobs import JobRegistry
 
 
@@ -1007,3 +1007,37 @@ def test_planning_names_the_rows_blocked_on_scoring(engine, collection):
 
     assert [r["title"] for r in payload["blocked"]] == ["not scored"]
     assert payload["waiting"] == []
+
+
+def test_scoring_and_planning_are_registered_job_kinds():
+    """The lamps in web/state.py have referred to these names since 8a-1."""
+    assert set(JOB_KINDS) == {
+        "generate-ideas", "score-opportunities", "plan-opportunities"
+    }
+
+
+def test_starting_the_scoring_job_runs_the_registered_function(engine, collection):
+    """Substituted through app.state.job_kinds so the real one never reaches Ollama."""
+    app = create_app(engine, collection)
+    ran = threading.Event()
+    app.state.job_kinds["score-opportunities"] = lambda session: ran.set()
+    client = TestClient(app)
+
+    response = client.post("/jobs/score-opportunities")
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "score-opportunities"
+    assert ran.wait(timeout=5)
+
+
+def test_starting_the_planning_job_runs_the_registered_function(engine, collection):
+    app = create_app(engine, collection)
+    ran = threading.Event()
+    app.state.job_kinds["plan-opportunities"] = lambda session: ran.set()
+    client = TestClient(app)
+
+    response = client.post("/jobs/plan-opportunities")
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "plan-opportunities"
+    assert ran.wait(timeout=5)
