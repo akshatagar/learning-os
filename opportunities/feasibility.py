@@ -1,5 +1,7 @@
 import json
 
+from dataclasses import dataclass
+
 import ollama
 from sqlalchemy import select
 
@@ -24,6 +26,45 @@ def unscored_approved(session) -> list[Opportunity]:
             .where(Opportunity.skill_match_pct.is_(None))
             .order_by(Opportunity.id)
         )
+    )
+
+
+def scored_approved(session) -> list[Opportunity]:
+    return list(
+        session.scalars(
+            select(Opportunity)
+            .where(Opportunity.status == "approved")
+            .where(Opportunity.skill_match_pct.is_not(None))
+            .order_by(Opportunity.id)
+        )
+    )
+
+
+@dataclass
+class ScoringBoard:
+    scored: list[Opportunity]
+    waiting: list[Opportunity]
+    unscorable: list[Opportunity]
+
+
+def scoring_board(session) -> ScoringBoard:
+    """Every approved opportunity, split by what is holding it.
+
+    The unscorable split is why this lives here and not in a route: it encodes
+    that score_opportunity returns None for a row listing no requirements, so
+    that row never leaves unscored_approved. A surface cannot be expected to
+    know that.
+    """
+    waiting = []
+    unscorable = []
+    for opportunity in unscored_approved(session):
+        required = json.loads(opportunity.required_skills or "[]")
+        (waiting if required else unscorable).append(opportunity)
+
+    return ScoringBoard(
+        scored=scored_approved(session),
+        waiting=waiting,
+        unscorable=unscorable,
     )
 
 
