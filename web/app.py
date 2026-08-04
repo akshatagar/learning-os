@@ -18,7 +18,7 @@ from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
 from ingestion.papers import ingest_paper
 from opportunities.generate import generate_ideas
-from opportunities.review import opportunity_views
+from opportunities.review import opportunity_views, resolve_opportunity
 from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
 from recommend.search import search
@@ -48,6 +48,14 @@ JOB_KINDS = {
 class ResolveRequest(BaseModel):
     action: str
     target_concept_id: int | None = None
+
+
+class ApprovalRequest(BaseModel):
+    # A plain str and not a Literal, for the reason IngestRequest gives below:
+    # Pydantic would reject an unknown value with 422 before the handler runs,
+    # and this application answers a well-formed request naming something
+    # invalid with 400.
+    action: str
 
 
 class IngestRequest(BaseModel):
@@ -304,6 +312,22 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                     for view in opportunity_views(session, status="generated")
                 ]
             }
+
+    @app.post("/opportunities/{opportunity_id}/resolve")
+    def opportunity_resolve(opportunity_id: int, request: ApprovalRequest) -> dict:
+        with Session(engine) as session:
+            opportunity = session.get(Opportunity, opportunity_id)
+            if opportunity is None:
+                raise HTTPException(
+                    status_code=404, detail="No opportunity with that id"
+                )
+            try:
+                status = resolve_opportunity(session, opportunity, request.action)
+            except ValueError as error:
+                # resolve_opportunity validates before it mutates, so the row
+                # is untouched here and the operator can pick again.
+                raise HTTPException(status_code=400, detail=str(error))
+            return {"id": opportunity_id, "status": status}
 
     def _skill(skill) -> dict:
         return {

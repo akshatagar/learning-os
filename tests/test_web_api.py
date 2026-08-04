@@ -890,3 +890,68 @@ def test_approval_returns_only_generated_rows(engine, collection):
     payload = client.get("/approval").json()
 
     assert [o["title"] for o in payload["opportunities"]] == ["waiting"]
+
+
+def test_keeping_an_idea_approves_it_and_darkens_the_lamp(engine, collection):
+    """The lamp is the point: resolving the last pending idea must go dark."""
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+    stages = client.get("/state").json()["stages"]
+    assert next(s for s in stages if s["id"] == "approval")["lamp"] == "holding"
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "approve"})
+
+    assert response.status_code == 200
+    assert response.json() == {"id": idea_id, "status": "approved"}
+    stages = client.get("/state").json()["stages"]
+    assert next(s for s in stages if s["id"] == "approval")["lamp"] == "unlit"
+
+
+def test_dropping_an_idea_rejects_it(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "reject"})
+
+    assert response.json()["status"] == "rejected"
+
+
+def test_restoring_a_dropped_idea_makes_it_pending_again(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "dropped", status="rejected")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "restore"})
+
+    assert response.json()["status"] == "generated"
+    assert [o["title"] for o in client.get("/approval").json()["opportunities"]] == [
+        "dropped"
+    ]
+
+
+def test_resolving_an_unknown_id_is_a_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/opportunities/9999/resolve", json={"action": "approve"})
+
+    assert response.status_code == 404
+
+
+def test_an_unknown_action_is_a_400(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "waiting")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "maybe"})
+
+    assert response.status_code == 400
+    assert "approval action" in response.json()["detail"]
+
+
+def test_restoring_an_approved_idea_is_a_400_and_changes_nothing(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    idea_id = _add_opportunity(engine, "kept", status="approved")
+
+    response = client.post(f"/opportunities/{idea_id}/resolve", json={"action": "restore"})
+
+    assert response.status_code == 400
+    assert "Cannot restore" in response.json()["detail"]
+    assert client.get("/ideas").json()["opportunities"][0]["status"] == "approved"
