@@ -25,7 +25,13 @@ from recommend.filter import filter_relevant
 from recommend.graph import DEFAULT_TOP, load_goal, recommend_goal
 from recommend.search import search
 from recommend.store import recommendations_for, store_recommendations
-from resolution.review import agreement_tally, next_pending, resolve_entry
+from resolution.review import (
+    adjudication_count,
+    adjudication_views,
+    agreement_tally,
+    next_pending,
+    resolve_entry,
+)
 from skills.entry import (
     PROFICIENCY_BANDS,
     add_skill,
@@ -350,6 +356,32 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 "planned": [_planning_row(row) for row in board.planned],
                 "waiting": [_planning_row(row) for row in board.waiting],
                 "blocked": [_planning_row(row) for row in board.blocked],
+            }
+
+    @app.get("/resolution")
+    def resolution() -> dict:
+        with Session(engine) as session:
+            return {
+                # The real count, not the page: the surface needs it to say
+                # honestly that it truncated.
+                "total": adjudication_count(session),
+                "adjudications": [
+                    {
+                        "id": view.log.id,
+                        "candidate_name": view.log.candidate_name,
+                        "model_decision": view.log.model_decision,
+                        "model_confidence": view.log.model_confidence,
+                        "model_reasoning": view.log.model_reasoning,
+                        "threshold": view.threshold,
+                        "outcome": view.outcome,
+                        "human_resolution": view.log.human_resolution,
+                        "created_at": (
+                            view.log.created_at.isoformat()
+                            if view.log.created_at else None
+                        ),
+                    }
+                    for view in adjudication_views(session)
+                ],
             }
 
     @app.post("/opportunities/{opportunity_id}/resolve")

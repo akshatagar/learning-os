@@ -7,6 +7,7 @@ import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderPlanning } from "./planning.js";
 import { renderQueue } from "./queue.js";
+import { renderResolution } from "./resolution.js";
 import { renderScoring } from "./scoring.js";
 import { renderSkills } from "./skills.js";
 
@@ -38,11 +39,15 @@ const surfaceBody = document.getElementById("surface-body");
 const surfaceCount = document.getElementById("surface-count");
 let opener = null;
 
+// Unreachable as of 8d-3: every stage in the drawing now has a branch above.
+// Kept as a fault message rather than deleted, so that a stage added to the
+// SVG without a surface says so instead of swallowing the click.
 function showPlaceholder() {
   surfaceCount.textContent = "";
   const note = document.createElement("p");
   note.className = "surface__empty";
-  note.textContent = "No work surface here yet. Built in 8c and 8d.";
+  note.textContent = "This stage has no work surface wired. That is a defect, "
+    + "not a stage that does nothing.";
   surfaceBody.replaceChildren(note);
 }
 
@@ -69,6 +74,8 @@ async function openStage(group) {
     await renderScoring(refresh);
   } else if (stage === "planning") {
     await renderPlanning(refresh);
+  } else if (stage === "resolution") {
+    await renderResolution();
   } else {
     showPlaceholder();
   }
@@ -98,9 +105,12 @@ connectEvents((event) => {
   if (event.type === "job" && event.status === "failed") showFault(event.id);
   if (event.type === "job" && event.status === "running") fault.hidden = true;
   // The run that just changed state is the one this surface is showing.
+  // An ingest writes adjudications as a side effect, so it has to reach the
+  // resolution surface too — that is the only way this surface ever changes.
   if (event.type === "job" && event.kind === "ingest" && !surface.hidden
-      && opener && opener.dataset.stage === "ingest") {
-    renderIngest(refresh);
+      && opener) {
+    if (opener.dataset.stage === "ingest") renderIngest(refresh);
+    if (opener.dataset.stage === "resolution") renderResolution();
   }
   if (event.type === "job" && event.kind === "recommend" && !surface.hidden
       && opener && opener.dataset.stage === "goals") {
