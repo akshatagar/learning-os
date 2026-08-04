@@ -9,7 +9,14 @@ from storage.models import Concept, Opportunity
 _STATUS_BY_ACTION = {
     "approve": "approved",
     "reject": "rejected",
+    "restore": "generated",
 }
+
+# restore is the only action with a legal starting point. A dropped idea is
+# recoverable because the panel has no confirmation dialogs and DROP is one
+# click; an approved one is not, because scoring and planning may already
+# have written to it.
+_RESTORE_FROM = "rejected"
 
 
 def pending_opportunities(session) -> list[Opportunity]:
@@ -25,6 +32,10 @@ def pending_opportunities(session) -> list[Opportunity]:
 def resolve_opportunity(session, opportunity, action) -> str:
     if action not in _STATUS_BY_ACTION:
         raise ValueError(f"Unknown approval action: {action}")
+    if action == "restore" and opportunity.status != _RESTORE_FROM:
+        raise ValueError(
+            f"Cannot restore an opportunity that is {opportunity.status}"
+        )
     opportunity.status = _STATUS_BY_ACTION[action]
     session.commit()
     return opportunity.status

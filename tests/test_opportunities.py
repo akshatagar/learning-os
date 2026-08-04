@@ -438,3 +438,31 @@ def test_opportunity_views_skip_a_concept_that_no_longer_exists(session):
     session.commit()
 
     assert opportunity_views(session)[0].concept_names == []
+
+
+def test_restore_returns_a_rejected_idea_to_pending(session):
+    idea = _add_idea(session, status="rejected")
+
+    assert resolve_opportunity(session, idea, "restore") == "generated"
+    assert idea.status == "generated"
+
+
+def test_restore_refuses_an_approved_idea(session):
+    """Scoring and planning may already have written to it.
+
+    Un-approving would orphan that work, which is a bigger question than this
+    cycle. The row must be left exactly as it was found.
+    """
+    idea = _add_idea(session, status="approved")
+
+    with pytest.raises(ValueError, match="Cannot restore"):
+        resolve_opportunity(session, idea, "restore")
+
+    assert idea.status == "approved"
+
+
+def test_restore_refuses_an_idea_that_is_already_pending(session):
+    idea = _add_idea(session, status="generated")
+
+    with pytest.raises(ValueError, match="Cannot restore"):
+        resolve_opportunity(session, idea, "restore")
