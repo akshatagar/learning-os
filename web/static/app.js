@@ -6,6 +6,7 @@ import { renderIdeas } from "./ideas.js";
 import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderQueue } from "./queue.js";
+import { renderScoring } from "./scoring.js";
 import { renderSkills } from "./skills.js";
 
 const plantState = document.getElementById("plant-state");
@@ -63,6 +64,8 @@ async function openStage(group) {
     await renderApproval(refresh);
   } else if (stage === "ideas") {
     await renderIdeas(refresh);
+  } else if (stage === "scoring") {
+    await renderScoring(refresh);
   } else {
     showPlaceholder();
   }
