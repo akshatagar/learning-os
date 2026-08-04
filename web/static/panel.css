@@ -400,3 +400,25 @@ main { padding: var(--step-4); }
   letter-spacing: 0.14em;
   color: var(--line-muted);
 }
+
+/* An execution plan. The learn/build split is the substance: learn milestones
+   are exactly the gaps scoring found. */
+.board__milestones {
+  list-style: none;
+  margin: var(--step-2) 0 0;
+  padding-left: var(--step-3);
+}
+.board__milestone { padding: var(--step-2) 0; }
+.board__kind {
+  margin: 0;
+  font-family: var(--legend);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--line-muted);
+}
+.board__detail {
+  margin: var(--step-1) 0 0;
+  color: var(--line-muted);
+  max-width: 65ch;
+}

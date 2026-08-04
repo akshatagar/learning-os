@@ -5,6 +5,7 @@ import { renderGoals } from "./goals.js";
 import { renderIdeas } from "./ideas.js";
 import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
+import { renderPlanning } from "./planning.js";
 import { renderQueue } from "./queue.js";
 import { renderScoring } from "./scoring.js";
 import { renderSkills } from "./skills.js";
@@ -66,6 +67,8 @@ async function openStage(group) {
     await renderIdeas(refresh);
   } else if (stage === "scoring") {
     await renderScoring(refresh);
+  } else if (stage === "planning") {
+    await renderPlanning(refresh);
   } else {
     showPlaceholder();
   }
@@ -109,6 +112,15 @@ connectEvents((event) => {
       && opener) {
     if (opener.dataset.stage === "ideas") renderIdeas(refresh);
     if (opener.dataset.stage === "approval") renderApproval(refresh);
+  }
+  // Scoring finishing moves a row out of planning's blocked list into its
+  // waiting list, so a scoring transition has to reach the planning surface
+  // too — not just the surface whose own job it was.
+  if (event.type === "job" && !surface.hidden && opener
+      && (event.kind === "score-opportunities"
+        || event.kind === "plan-opportunities")) {
+    if (opener.dataset.stage === "scoring") renderScoring(refresh);
+    if (opener.dataset.stage === "planning") renderPlanning(refresh);
   }
   refresh();
 });
