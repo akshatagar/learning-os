@@ -1041,3 +1041,69 @@ def test_starting_the_planning_job_runs_the_registered_function(engine, collecti
     assert response.status_code == 200
     assert response.json()["kind"] == "plan-opportunities"
     assert ran.wait(timeout=5)
+
+
+def _add_log(engine, name, decision, confidence=0.85, human=None, queued=False):
+    with Session(engine) as session:
+        log = AdjudicationLog(
+            candidate_name=name,
+            model_decision=decision,
+            model_confidence=confidence,
+            model_reasoning="Because.",
+            human_resolution=human,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(log)
+        session.flush()
+        if queued:
+            session.add(MergeQueue(
+                candidate_name=name, status="pending", adjudication_log_id=log.id
+            ))
+        session.commit()
+        return log.id
+
+
+def test_resolution_serialises_a_created_row(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_log(engine, "Attention Mechanism", "new")
+
+    payload = client.get("/resolution").json()
+
+    assert payload["total"] == 1
+    row = payload["adjudications"][0]
+    assert row["candidate_name"] == "Attention Mechanism"
+    assert row["model_decision"] == "new"
+    assert row["model_confidence"] == 0.85
+    assert row["outcome"] == "created"
+    assert row["threshold"] == 0.65
+    assert row["created_at"] is not None
+
+
+def test_resolution_reports_a_queued_row_and_its_human_resolution(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    _add_log(engine, "Auto-regressive property", "uncertain",
+             confidence=0.25, human="approved_new", queued=True)
+
+    row = client.get("/resolution").json()["adjudications"][0]
+
+    assert row["outcome"] == "queued"
+    assert row["human_resolution"] == "approved_new"
+    assert row["threshold"] is None
+
+
+def test_resolution_total_exceeds_the_page_when_the_cap_bites(engine, collection):
+    """The truncation line depends on total being the real count, not the page."""
+    client = TestClient(create_app(engine, collection))
+    for index in range(105):
+        _add_log(engine, f"candidate {index}", "new")
+
+    payload = client.get("/resolution").json()
+
+    assert payload["total"] == 105
+    assert len(payload["adjudications"]) == 100
+
+
+def test_resolution_is_empty_before_anything_is_ingested(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.get("/resolution").json() == {"total": 0, "adjudications": []}
