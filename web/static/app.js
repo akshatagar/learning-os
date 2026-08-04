@@ -2,6 +2,7 @@ import { renderApproval } from "./approval.js";
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderGoals } from "./goals.js";
+import { renderIdeas } from "./ideas.js";
 import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderQueue } from "./queue.js";
@@ -60,6 +61,8 @@ async function openStage(group) {
     await renderGoals(refresh);
   } else if (stage === "approval") {
     await renderApproval(refresh);
+  } else if (stage === "ideas") {
+    await renderIdeas(refresh);
   } else {
     showPlaceholder();
   }
@@ -96,6 +99,13 @@ connectEvents((event) => {
   if (event.type === "job" && event.kind === "recommend" && !surface.hidden
       && opener && opener.dataset.stage === "goals") {
     renderGoals(refresh);
+  }
+  // A finished generation must land under the cursor of whichever of the two
+  // opportunity surfaces is open, without a reload.
+  if (event.type === "job" && event.kind === "generate-ideas" && !surface.hidden
+      && opener) {
+    if (opener.dataset.stage === "ideas") renderIdeas(refresh);
+    if (opener.dataset.stage === "approval") renderApproval(refresh);
   }
   refresh();
 });
