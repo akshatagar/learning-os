@@ -24,7 +24,11 @@ def concept_gaps(
     similarity_threshold=SIMILARITY_THRESHOLD,
     confidence_threshold=CONFIDENCE_THRESHOLD,
 ) -> GapResult:
-    requirements = json.loads(goal.concept_requirements)
+    # NULL means "not drafted yet", which is a real state now that goals are
+    # created before their requirements exist. It is not an error and it is
+    # not an empty list: the surface tells those two apart, this does not
+    # have to.
+    requirements = json.loads(goal.concept_requirements or "[]")
     present: list[str] = []
     weak: list[str] = []
     missing: list[str] = []

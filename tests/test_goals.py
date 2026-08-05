@@ -235,3 +235,26 @@ def test_all_goal_gaps_pairs_each_goal_with_its_own_requirements(session, collec
     assert results[1].gaps.missing == ["gamma"]
     assert results[0].gaps.present == []
     assert results[0].gaps.scores["alpha"] == pytest.approx(0.0)
+
+
+def test_concept_gaps_treats_null_requirements_as_none_yet(session, collection):
+    goal = Goal(description="brand new", category="new", priority=1,
+                concept_requirements=None)
+    session.add(goal)
+    session.commit()
+
+    result = concept_gaps(session, collection, goal)
+
+    assert result == GapResult(present=[], weak=[], missing=[], scores={})
+
+
+def test_all_goal_gaps_includes_a_goal_with_no_requirements(session, collection):
+    """A goal drafting its requirements must not break the goals listing."""
+    session.add(Goal(description="brand new", category="new", priority=1,
+                     concept_requirements=None))
+    session.commit()
+
+    results = all_goal_gaps(session, collection)
+
+    assert len(results) == 1
+    assert results[0].gaps.missing == []
