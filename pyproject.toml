@@ -27,6 +27,11 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+# The repo root has to be importable for `from storage.db import ...` to
+# resolve. This used to happen implicitly, as a side effect of an empty
+# conftest.py sitting in the root; saying it here means deleting a file
+# cannot silently break collection again.
+pythonpath = ["."]
 markers = [
     "live: makes a real Ollama or Tavily call; excluded from CI (pytest -m \"not live\")",
 ]
