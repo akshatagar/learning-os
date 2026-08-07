@@ -305,8 +305,8 @@ main { padding: var(--step-4); }
 }
 .skills__notice { color: var(--line-muted); max-width: 65ch; margin: var(--step-3) 0 0; }
 
-/* The goals view. Read-only, and the only surface where a meter's tick marks
-   a line the operator can act on: below it, nothing in the store matched. */
+/* The goals view. The only surface where a meter's tick marks a line the
+   operator can act on: below it, nothing in the store matched. */
 .goals__goal { border-bottom: 1px solid var(--line-hairline); padding: var(--step-3) 0; }
 .goals__summary { cursor: pointer; list-style: none; }
 /* The default disclosure triangle is a shape this drawing does not own. */
@@ -333,6 +333,14 @@ main { padding: var(--step-4); }
   padding: var(--step-1) 0;
 }
 .goals__requirement-name { margin: 0; }
+
+.goals__create { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.goals__input, .goals__textarea {
+  background: var(--ground); color: var(--line);
+  border: 1px solid var(--line-soft); padding: 0.5rem; font: inherit;
+}
+.goals__editor { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.goals__warning { color: var(--lamp-holding); font-size: 0.8rem; }
 
 /* Recommendations. The one place this system reaches the network, and the
    notice saying so is ordinary text — marked, not alarming. */

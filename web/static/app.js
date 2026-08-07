@@ -112,8 +112,12 @@ connectEvents((event) => {
     if (opener.dataset.stage === "ingest") renderIngest(refresh);
     if (opener.dataset.stage === "resolution") renderResolution();
   }
-  if (event.type === "job" && event.kind === "recommend" && !surface.hidden
-      && opener && opener.dataset.stage === "goals") {
+  // draft-requirements joins recommend here: both leave a goal's own row
+  // stale on the surface that is already open, and neither has anywhere
+  // else to be watched from.
+  if (event.type === "job"
+      && (event.kind === "recommend" || event.kind === "draft-requirements")
+      && !surface.hidden && opener && opener.dataset.stage === "goals") {
     renderGoals(refresh);
   }
   // A finished generation must land under the cursor of whichever of the two
