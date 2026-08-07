@@ -4,7 +4,9 @@ A local-first system that turns what you read into a structured account of what 
 
 Everything that reasons runs on your machine. Concept extraction, identity adjudication, idea generation, feasibility scoring, and execution planning all call a local [Ollama](https://ollama.com) model. Embeddings are local. Storage is a SQLite file and a ChromaDB directory next to it. No document, note, concept, skill, or goal leaves the machine — with one clearly marked exception, web search for reading recommendations.
 
-Status: **backend complete, no UI yet.** Every stage below is implemented, tested, and running against real data. The interface is a CLI.
+Status: **the desktop app is the primary interface.** Every stage below is implemented and tested against real data, including full goal management (create, draft, edit, delete) from the panel. A `cli.py` shim still exists locally for the stages the panel doesn't yet drive (ingestion, skills, the merge queue, idea generation and review), but it is intentionally untracked — see Usage below.
+
+[MIT licensed](LICENSE). ![tests](https://github.com/akshatagar/learning-os/actions/workflows/tests.yml/badge.svg)
 
 ---
 
@@ -64,6 +66,8 @@ Every extracted candidate is checked against its nearest neighbours in the vecto
 
 The system never asserts into persistent state when it is uncertain. That single rule is what makes every downstream stage — gaps, feasibility, planning — mean something, and it is why the merge queue exists. Every adjudication is logged with the model's decision, confidence, reasoning, and the human's eventual resolution, so the thresholds can be tuned against real disagreement data later.
 
+Goal requirement phrases follow the same discipline in a different form: every phrase containing an acronym also spells it out — `"KV cache key-value cache"`, not `"KV cache"` — because the matcher works by embedding similarity, and a bare acronym scores 0.51-0.68 against its own spelled-out concept and quietly misses. The desktop app's requirement editor flags (but does not block) a phrase that breaks this convention.
+
 ---
 
 ## Architecture
@@ -75,20 +79,21 @@ A Python package per stage. No framework, no service layer, no dependency inject
 | `storage/` | SQLAlchemy 2.0 models, engine/session factories, ChromaDB collection setup |
 | `ingestion/` | `ingest_paper()` — a 6-node graph; `ingest_note()` — a 4-node graph sharing the tail nodes |
 | `resolution/` | `resolve_candidate()`, the shared identity subroutine; the merge-queue review loop |
-| `goals/` | Seeded goals with concept requirements; `concept_gaps()` present/weak/missing classifier |
+| `goals/` | `draft_all()` drafts concept requirement phrases with a local model; `concept_gaps()` present/weak/missing classifier |
 | `recommend/` | `recommend_goal()` — a 5-node graph: gaps → rank → search → dedup → relevance filter |
 | `skills/` | Interactive skills entry |
 | `opportunities/` | Idea generation (3-node graph), approval loop, feasibility scoring, execution planning |
+| `web/` | FastAPI app, job registry, and the pywebview desktop shell |
 
 Two conventions hold throughout, and both exist for reasons that cost something to learn:
 
-**Loops are not graphs.** Anything that walks rows and commits per row is a plain loop — the review gates, scoring, planning. A `StateGraph` is used only where the stage is a true pipeline. A node that blocks on `input()` is hard to test and hard to resume.
+**Loops are not graphs.** Anything that walks rows and commits per row is a plain loop — the review gates, scoring, planning, goal drafting. A `StateGraph` is used only where the stage is a true pipeline. A node that blocks on `input()` is hard to test and hard to resume.
 
-**Every model call is injectable.** Each stage takes a `*_fn` parameter (`match_fn`, `generate_fn`, `plan_fn`, `adjudicate_fn`, `input_fn`) defaulting to the real implementation. The entire suite runs without a model except for a handful of deliberate live round-trips.
+**Every model call is injectable.** Each stage takes a `*_fn` parameter (`match_fn`, `generate_fn`, `plan_fn`, `adjudicate_fn`, `draft_fn`, `input_fn`) defaulting to the real implementation. The entire suite runs without a model except for a handful of deliberate live round-trips, marked with `@pytest.mark.live` and excluded from CI.
 
 ### Batch work is resumable
 
-Every batch stage selects only rows it has not yet handled — `skill_match_pct IS NULL`, `execution_plan IS NULL`, `status = 'generated'` — and commits after each row. Interrupting a run mid-way loses nothing, and re-running continues where it stopped. This matters more than it sounds: a single model call takes 60-90 seconds, so a full run is measured in minutes.
+Every batch stage selects only rows it has not yet handled — `skill_match_pct IS NULL`, `execution_plan IS NULL`, `concept_requirements IS NULL`, `status = 'generated'` — and commits after each row. Interrupting a run mid-way loses nothing, and re-running continues where it stopped. This matters more than it sounds: a single model call takes 60-90 seconds, so a full run is measured in minutes.
 
 ---
 
@@ -102,7 +107,7 @@ One SQLite database, seven tables, migrated with Alembic.
 | `merge_queue` | Candidates awaiting human judgment |
 | `adjudication_log` | Every model decision with confidence, reasoning, and human resolution |
 | `skills` | What you can actually do. **The one table only you may write to** |
-| `goals` | What you are trying to learn, with concept requirement phrases |
+| `goals` | What you are trying to learn, with concept requirement phrases (`NULL` until drafted) |
 | `content_log` | What has been ingested, so recommendations never suggest it again |
 | `opportunities` | Generated ideas, their status, feasibility score, missing skills, execution plan |
 
@@ -131,7 +136,7 @@ uv sync
 uv run alembic upgrade head
 ```
 
-That creates `data/learning_os.db`. The ChromaDB directory at `data/chroma` is created on first use.
+That creates `data/learning_os.db` (the directory is created automatically if it doesn't exist yet). The ChromaDB directory at `data/chroma` is created on first use.
 
 **Environment**
 
@@ -145,13 +150,11 @@ Copy `.env.example` to `.env` and fill it in. One key is required, and only for 
 uv run pytest
 ```
 
-218 tests. A handful make real Ollama and Tavily calls and take 60-90 seconds each, so the full suite runs about ten minutes. There is no marker separating them yet.
+428 tests. 12 of them make a real Ollama or Tavily call and take 60-90 seconds each, so the full suite runs about ten minutes. Run `uv run pytest -m "not live"` instead for the fast, fully offline 416 — this is what CI runs on every push and pull request.
 
 ---
 
 ## Usage
-
-> **Note:** `cli.py` is intentionally untracked, so a fresh clone has **no command-line entry point**. All logic lives in the importable modules listed above — that is the real API, and the CLI is a thin `argparse` shim over it. The commands below describe the author's local shim; reproduce it, or call the functions directly. The desktop app is the exception: it is tracked, and it works on a fresh clone.
 
 ### The desktop app
 
@@ -173,7 +176,7 @@ then open `http://127.0.0.1:8765/`. Both bind to `127.0.0.1` only; this is a sin
 
 **Windows requires Microsoft Edge WebView2**, which pywebview renders into. It is present by default on Windows 11. On Windows 10, install the Evergreen Runtime from Microsoft before the first launch, or the window opens empty.
 
-Only `generate-ideas` can currently be started from the panel. Clicking the `queue` stage opens the merge-queue gate, described below; every other stage opens a work surface that says it is not built yet, and those are still driven from Python.
+**Goals — create, draft, edit, delete** are fully driven from the panel: click the `goals` stage, fill in a description and a short category name, and click CREATE. That kicks off a background job that drafts fourteen concept requirement phrases with the local model — the panel shows "DRAFTING REQUIREMENTS…" until it lands, typically 60-90 seconds. From there you can edit the phrases directly (the editor flags any bare acronym that needs its expansion spelled out, without blocking the save) or delete the goal entirely. Every other work surface either drives a job directly from the panel (`generate-ideas`) or opens a gate the panel serves but Python still writes to (the merge queue).
 
 ### Reviewing the merge queue
 
@@ -185,10 +188,11 @@ The running tally at the foot counts how often you agreed with the model on the 
 
 The CLI loop (`run_review_loop` in `resolution/review.py`) still works and does the same thing.
 
-### Getting started
+### The CLI
+
+> **Note:** `cli.py` is intentionally untracked, so a fresh clone has **no command-line entry point**. All logic lives in the importable modules listed above — that is the real API, and the CLI is a thin `argparse` shim over it. The commands below describe the author's local shim; reproduce it, or call the functions directly.
 
 ```bash
-uv run python cli.py seed-goals    # five goals, 14 requirement phrases each; idempotent
 uv run python cli.py add-skills    # interactive; only you know your skills
 ```
 
@@ -240,9 +244,9 @@ uv run python cli.py show-plan 11
 
 Each stage runs only on rows the previous stage approved, so the expensive work happens only on ideas you chose.
 
-### Full command list
+### Full CLI command list
 
-`list-concepts` · `list-queue` · `review-queue` · `seed-goals` · `add-skills` · `recommend` · `generate-ideas` · `review-ideas` · `score-opportunities` · `plan-opportunities` · `show-plan`
+`list-concepts` · `list-queue` · `review-queue` · `add-skills` · `recommend` · `generate-ideas` · `review-ideas` · `score-opportunities` · `plan-opportunities` · `show-plan`
 
 ---
 
@@ -254,23 +258,21 @@ Recorded because each cost real debugging and each generalizes.
 
 - A top-level `{"type": "array"}` schema is satisfied by `[]`, and a constrained decoder will emit `]` immediately as the shortest legal completion. Idea generation returned **zero** ideas on every run until the array was wrapped in an object with a required key.
 - A field typed `["string", "null"]` is satisfied by the literal string `"null"`, which the model duly returned. Schema-valid, and the type was lying.
-- An empty milestone list would satisfy `execution_plan IS NOT NULL`, making a failed generation read as "planned" forever after. It raises instead.
+- An empty milestone list would satisfy `execution_plan IS NOT NULL`, making a failed generation read as "planned" forever after. It raises instead. Drafting a goal's requirements follows the same rule: an empty list would satisfy `concept_requirements IS NOT NULL` and make a failed draft read as done, so `draft_all` raises rather than write it.
 
 **Treat the model's reply as a lookup table, never as the list you iterate.** Feasibility scoring walks the *stored* requirements and looks each one up in the model's answer, so a requirement the model omits still counts as missing and one it invents is ignored. Execution planning walks the *stored* missing skills and generates a blunt fallback milestone for any the model skipped — which it does: on real data the model produced learning steps for skills already held and omitted the one that was actually missing.
 
-**Embedding similarity is not a synonym matcher.** Measured against the real skills table, `containerization` → Docker scored 0.577 and `deep learning frameworks` returned *Scikit-Learn*, not PyTorch. For half of realistic cases the nearest neighbour is the wrong entity, so no threshold recovers it. Skill names are vendor nouns that nobody wrote to be retrievable. Goal requirement phrases work at 0.70 only because they were hand-written for that purpose, under a convention that every acronym appears with its expansion.
+**Embedding similarity is not a synonym matcher.** Measured against the real skills table, `containerization` → Docker scored 0.577 and `deep learning frameworks` returned *Scikit-Learn*, not PyTorch. For half of realistic cases the nearest neighbour is the wrong entity, so no threshold recovers it. Skill names are vendor nouns that nobody wrote to be retrievable. Goal requirement phrases work at 0.70 only because they were hand-written for that purpose, under the acronym-expansion convention described above.
 
 ---
 
 ## Current state
 
-Real data in the author's database: 15 concepts from one ingested paper, 1 pending queue entry, 12 skills, 5 goals, and 12 opportunities of which 3 are approved, scored, and planned.
-
 Known gaps, in rough priority order:
 
-- **No UI.** The three human gates are keyboard loops in a terminal. A desktop app is the next build.
-- **`qwen2.5:7b` everywhere.** The design specifies `qwen2.5:14b` for idea generation, feasibility, and planning. It was never installed, so every quality judgment is confounded by model size.
-- **Prompt adherence is inconsistent** in three places: the notes extraction engagement rule, `required_skills` compliance, and learn-milestone targeting. Same class of problem, not yet attacked deliberately.
+- **`qwen2.5:7b` everywhere.** The design specifies `qwen2.5:14b` for idea generation, feasibility, planning, and goal drafting. It was never installed, so every quality judgment is confounded by model size — including, visibly, the requirement phrases a small model drafts for a broad or vaguely-scoped goal, which can drift toward generic categories instead of concrete concepts.
+- **Prompt adherence is inconsistent** in several places: the notes extraction engagement rule, `required_skills` compliance, and learn-milestone targeting. Same class of problem, not yet attacked deliberately.
 - **Nothing is recomputed.** Learning a new skill does not improve any existing opportunity's score, and no plan is ever revised.
 - **Thresholds are unmeasured.** `k=5`, 0.85, 0.65, and 0.70 were all chosen by feel. The `adjudication_log` is accumulating the model-versus-human pairs needed to settle them.
 - **`skills.last_used` has no writer** and is NULL on every row. Either something populates it or the column should go.
+- **No packaging or installer.** Running this today means cloning it and using `uv`. There is no path yet for someone who isn't a developer to install and run it.
