@@ -1,8 +1,10 @@
 [project]
 name = "learning-os"
 version = "0.1.0"
-description = "Add your description here"
+description = "A local-first system that turns papers and notes into a structured account of what you know, then uses it to decide what to learn and what to build next."
 readme = "README.md"
+license = "MIT"
+authors = [{name = "akshatagar"}]
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.18.5",
