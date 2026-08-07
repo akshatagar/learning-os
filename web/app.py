@@ -8,11 +8,13 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
 from concepts.store import list_concepts
+from goals.draft import draft_all, flag_bare_acronym
 from goals.gaps import CONFIDENCE_THRESHOLD, SIMILARITY_THRESHOLD, all_goal_gaps
 from ingestion.history import recent_ingests
 from ingestion.notes import ingest_note
@@ -39,7 +41,7 @@ from skills.entry import (
     existing_skills,
     set_proficiency,
 )
-from storage.models import MergeQueue, Opportunity, Skill
+from storage.models import Goal, MergeQueue, Opportunity, Recommendation, Skill
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -52,6 +54,7 @@ JOB_KINDS = {
     "generate-ideas": lambda session: generate_ideas(session),
     "score-opportunities": lambda session: score_all(session),
     "plan-opportunities": lambda session: plan_all(session),
+    "draft-requirements": lambda session: draft_all(session),
 }
 
 
@@ -88,6 +91,16 @@ class SkillRequest(BaseModel):
 
 class BandRequest(BaseModel):
     band: str
+
+
+class GoalRequest(BaseModel):
+    description: str
+    category: str
+    priority: int = 1
+
+
+class RequirementsRequest(BaseModel):
+    requirements: list[str]
 
 
 def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
@@ -261,6 +274,16 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                         "category": result.goal.category,
                         "description": result.goal.description,
                         "priority": result.goal.priority,
+                        # Served raw as well as classified: present/weak/missing
+                        # are all empty both for a goal that has no requirements
+                        # yet and for one whose requirements matched nothing.
+                        # Those are different screens, so the surface needs the
+                        # column itself to tell them apart.
+                        "requirements": (
+                            json.loads(result.goal.concept_requirements)
+                            if result.goal.concept_requirements is not None
+                            else None
+                        ),
                         "present": result.gaps.present,
                         "weak": result.gaps.weak,
                         "missing": result.gaps.missing,
@@ -288,6 +311,78 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 "similarity_threshold": SIMILARITY_THRESHOLD,
                 "confidence_threshold": CONFIDENCE_THRESHOLD,
             }
+
+    def _goal(goal) -> dict:
+        return {
+            "id": goal.id,
+            "category": goal.category,
+            "description": goal.description,
+            "priority": goal.priority,
+            "requirements": (
+                json.loads(goal.concept_requirements)
+                if goal.concept_requirements is not None
+                else None
+            ),
+        }
+
+    @app.post("/goals")
+    def create_goal(request: GoalRequest) -> dict:
+        description = request.description.strip()
+        if not description:
+            raise HTTPException(
+                status_code=400, detail="A goal description is required"
+            )
+        with Session(engine) as session:
+            goal = Goal(
+                description=description,
+                category=request.category.strip() or None,
+                priority=request.priority,
+                # NULL, not an empty list: the drafting job's work queue is
+                # exactly the set of rows where this column is NULL.
+                concept_requirements=None,
+            )
+            session.add(goal)
+            session.commit()
+            return {"goal": _goal(goal)}
+
+    @app.patch("/goals/{goal_id}")
+    def edit_goal(goal_id: int, request: RequirementsRequest) -> dict:
+        phrases = [p.strip() for p in request.requirements if p.strip()]
+        if not phrases:
+            raise HTTPException(
+                status_code=400,
+                detail="A goal with no requirements cannot be measured "
+                       "against anything",
+            )
+        with Session(engine) as session:
+            goal = session.get(Goal, goal_id)
+            if goal is None:
+                raise HTTPException(status_code=404, detail="No goal with that id")
+            goal.concept_requirements = json.dumps(phrases)
+            session.commit()
+            # Reported, not rejected. The phrase is the operator's to write;
+            # this only makes sure they know what it will cost them.
+            return {
+                "goal": _goal(goal),
+                "flagged": [p for p in phrases if flag_bare_acronym(p)],
+            }
+
+    @app.delete("/goals/{goal_id}")
+    def delete_goal(goal_id: int) -> dict:
+        with Session(engine) as session:
+            goal = session.get(Goal, goal_id)
+            if goal is None:
+                raise HTTPException(status_code=404, detail="No goal with that id")
+            # Recommendations are a cache of what to read for this goal's gaps.
+            # A gap belonging to no goal cannot be rendered by any surface, so
+            # leaving the rows would put unreachable data in the store.
+            for row in session.scalars(
+                select(Recommendation).where(Recommendation.goal_id == goal_id)
+            ):
+                session.delete(row)
+            session.delete(goal)
+            session.commit()
+            return {"deleted": goal_id}
 
     def _opportunity(view) -> dict:
         opportunity = view.opportunity

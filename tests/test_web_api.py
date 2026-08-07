@@ -1012,7 +1012,8 @@ def test_planning_names_the_rows_blocked_on_scoring(engine, collection):
 def test_scoring_and_planning_are_registered_job_kinds():
     """The lamps in web/state.py have referred to these names since 8a-1."""
     assert set(JOB_KINDS) == {
-        "generate-ideas", "score-opportunities", "plan-opportunities"
+        "generate-ideas", "score-opportunities", "plan-opportunities",
+        "draft-requirements",
     }
 
 
@@ -1101,6 +1102,104 @@ def test_resolution_total_exceeds_the_page_when_the_cap_bites(engine, collection
 
     assert payload["total"] == 105
     assert len(payload["adjudications"]) == 100
+
+
+def test_create_goal_starts_with_no_requirements(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/goals", json={
+        "description": "understand diffusion models",
+        "category": "diffusion",
+        "priority": 1,
+    })
+
+    assert response.status_code == 200
+    assert response.json()["goal"]["requirements"] is None
+
+
+def test_create_goal_rejects_an_empty_description(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.post("/goals", json={
+        "description": "  ", "category": "x", "priority": 1,
+    })
+
+    assert response.status_code == 400
+
+
+def test_goals_listing_survives_an_undrafted_goal(engine, collection):
+    """The regression guard for the TypeError fixed in Task 1."""
+    client = TestClient(create_app(engine, collection))
+    client.post("/goals", json={
+        "description": "brand new", "category": "new", "priority": 1,
+    })
+
+    response = client.get("/goals")
+
+    assert response.status_code == 200
+    assert response.json()["goals"][0]["requirements"] is None
+
+
+def test_edit_writes_requirements_and_flags_bare_acronyms(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    goal_id = client.post("/goals", json={
+        "description": "d", "category": "c", "priority": 1,
+    }).json()["goal"]["id"]
+
+    response = client.patch(f"/goals/{goal_id}", json={
+        "requirements": ["KV cache", "self-attention"],
+    })
+
+    assert response.status_code == 200
+    assert response.json()["goal"]["requirements"] == ["KV cache", "self-attention"]
+    assert response.json()["flagged"] == ["KV cache"]
+
+
+def test_edit_rejects_an_empty_requirement_list(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    goal_id = client.post("/goals", json={
+        "description": "d", "category": "c", "priority": 1,
+    }).json()["goal"]["id"]
+
+    response = client.patch(f"/goals/{goal_id}", json={"requirements": []})
+
+    assert response.status_code == 400
+
+
+def test_edit_unknown_goal_is_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    response = client.patch("/goals/999", json={"requirements": ["x"]})
+
+    assert response.status_code == 404
+
+
+def test_delete_takes_the_recommendation_rows_with_it(engine, collection):
+    client = TestClient(create_app(engine, collection))
+    goal_id = client.post("/goals", json={
+        "description": "d", "category": "c", "priority": 1,
+    }).json()["goal"]["id"]
+    with Session(engine) as session:
+        session.add(Recommendation(goal_id=goal_id, gap="x", gap_score=0.5,
+                                   results="[]"))
+        session.commit()
+
+    response = client.delete(f"/goals/{goal_id}")
+
+    assert response.status_code == 200
+    with Session(engine) as session:
+        assert session.scalars(select(Goal)).all() == []
+        assert session.scalars(select(Recommendation)).all() == []
+
+
+def test_delete_unknown_goal_is_404(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    assert client.delete("/goals/999").status_code == 404
+
+
+def test_draft_requirements_is_a_registered_job_kind():
+    assert "draft-requirements" in JOB_KINDS
 
 
 def test_resolution_is_empty_before_anything_is_ingested(engine, collection):
