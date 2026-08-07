@@ -1,6 +1,6 @@
 import json
 
-from storage.models import Concept, MergeQueue, Opportunity, Skill
+from storage.models import Concept, Goal, MergeQueue, Opportunity, Skill
 from web.state import HOLDING, RUNNING, UNLIT, panel_state
 
 
@@ -122,3 +122,14 @@ def test_stage_order_follows_the_process(session):
         "ingest", "resolution", "queue", "concepts", "goals",
         "ideas", "approval", "scoring", "planning", "skills",
     ]
+
+
+def test_goals_lamp_holds_when_a_goal_has_no_requirements(session):
+    session.add(Goal(description="new", category="new", priority=1,
+                     concept_requirements=None))
+    session.commit()
+
+    stages = panel_state(session)["stages"]
+    goals = next(stage for stage in stages if stage["id"] == "goals")
+
+    assert goals["lamp"] == "holding"

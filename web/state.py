@@ -33,6 +33,7 @@ def panel_state(session, running_kinds=()) -> dict:
     pending_queue = _count(session, MergeQueue, MergeQueue.status == "pending")
     pending_ideas = _count(session, Opportunity, Opportunity.status == "generated")
     skill_count = _count(session, Skill)
+    undrafted_goals = _count(session, Goal, Goal.concept_requirements.is_(None))
 
     def flow(kind: str) -> str:
         return RUNNING if kind in running else UNLIT
@@ -52,7 +53,11 @@ def panel_state(session, running_kinds=()) -> dict:
         {"id": "concepts", "label": "Concept Store",
          "count": _count(session, Concept), "lamp": UNLIT},
         {"id": "goals", "label": "Goals",
-         "count": _count(session, Goal), "lamp": flow("recommend")},
+         "count": _count(session, Goal),
+         # HOLDING outranks RUNNING, the same rule gate() states: a goal whose
+         # requirements were never drafted is waiting on a person, and a
+         # recommend run elsewhere must not mask it.
+         "lamp": HOLDING if undrafted_goals else flow("recommend")},
         {"id": "ideas", "label": "Ideas",
          "count": _count(session, Opportunity), "lamp": flow("generate-ideas")},
         {"id": "approval", "label": "Approval",
