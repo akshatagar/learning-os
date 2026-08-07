@@ -23,3 +23,8 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: makes a real Ollama or Tavily call; excluded from CI (pytest -m \"not live\")",
+]

@@ -57,6 +57,7 @@ def test_search_raises_for_empty_api_key(monkeypatch):
         search("gradient accumulation")
 
 
+@pytest.mark.live
 def test_search_returns_well_formed_results_from_tavily():
     """Live round-trip against the real Tavily API."""
     if not os.environ.get("TAVILY_API_KEY"):

@@ -25,6 +25,7 @@ def test_query_neighbors_returns_top_k_with_similarity_scores(collection):
     assert 0.0 < top["similarity_score"] <= 1.0
 
 
+@pytest.mark.live
 def test_call_ollama_adjudicate_matches_identical_candidate_name():
     neighbors = [{"id": 1, "name": "gradient descent", "similarity_score": 1.0}]
 

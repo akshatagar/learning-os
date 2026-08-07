@@ -90,6 +90,7 @@ def test_extract_concepts_uses_injected_extract_fn():
     ]
 
 
+@pytest.mark.live
 def test_call_ollama_extract_note_returns_schema_valid_candidates():
     note_text = (
         "Spent the evening implementing a small transformer from scratch. "

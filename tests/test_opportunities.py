@@ -228,6 +228,7 @@ def test_build_generation_prompt_distinguishes_skills_from_concepts():
     assert "Do NOT list the concepts above as skills" in prompt
 
 
+@pytest.mark.live
 def test_call_ollama_generate_asks_for_skills_not_the_concepts_back():
     """Live: required_skills must name buildable tools, not echo the concepts.
 
@@ -258,6 +259,7 @@ def test_call_ollama_generate_asks_for_skills_not_the_concepts_back():
     ), f"no buildable technology named, only concepts: {all_skills}"
 
 
+@pytest.mark.live
 def test_call_ollama_generate_returns_schema_valid_ideas():
     """Live round-trip against a running Ollama.
 

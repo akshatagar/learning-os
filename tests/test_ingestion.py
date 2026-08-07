@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from storage.models import ContentLog
 
 from ingestion.papers import (
@@ -115,6 +117,7 @@ def test_extract_concepts_uses_injected_extract_fn():
     ]
 
 
+@pytest.mark.live
 def test_call_ollama_extract_returns_schema_valid_candidates():
     section_text = (
         "We propose a new architecture based on the attention mechanism, "

@@ -104,6 +104,7 @@ def test_clean_covered_by_keeps_real_skill_names():
     assert _clean_covered_by("  FastAPI  ") == "FastAPI"
 
 
+@pytest.mark.live
 def test_call_ollama_match_handles_synonyms_compounds_and_true_gaps():
     """Live round-trip. These three cases are the acceptance bar.
 
@@ -124,6 +125,7 @@ def test_call_ollama_match_handles_synonyms_compounds_and_true_gaps():
     assert covered_by.get("Kubernetes") is None
 
 
+@pytest.mark.live
 def test_call_ollama_match_never_names_a_skill_outside_the_list():
     """The hallucination check, run against the live model.
 

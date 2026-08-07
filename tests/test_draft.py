@@ -60,6 +60,7 @@ def test_prompt_states_the_acronym_convention_with_an_example():
     ("llm-internals", "understand transformer internals well enough to "
                       "modify architecture choices"),
 ])
+@pytest.mark.live
 def test_call_ollama_draft_returns_real_concept_names(category, description):
     """Live Ollama. Takes 60-90 seconds."""
     requirements = call_ollama_draft(description, category, count=14)

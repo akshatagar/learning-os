@@ -1,3 +1,5 @@
+import pytest
+
 from recommend.filter import (
     MAX_PER_GAP,
     _build_filter_prompt,
@@ -106,6 +108,7 @@ def test_build_filter_prompt_asks_for_complementary_results():
     assert "introduction" in prompt.lower()
 
 
+@pytest.mark.live
 def test_call_ollama_filter_returns_valid_indices():
     """Live round-trip against a running Ollama."""
     results = [

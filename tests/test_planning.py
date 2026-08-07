@@ -152,6 +152,7 @@ def test_normalize_milestone_strips_whitespace_and_tolerates_missing_keys():
     assert milestone["detail"] == ""
 
 
+@pytest.mark.live
 def test_call_ollama_plan_returns_a_learn_milestone_for_the_missing_skill():
     """Live round-trip. The acceptance bar for the prompt.
 
@@ -177,6 +178,7 @@ def test_call_ollama_plan_returns_a_learn_milestone_for_the_missing_skill():
     assert "sql" in learn_text
 
 
+@pytest.mark.live
 def test_call_ollama_plan_honors_min_items():
     """`minItems` is respected even when the task warrants fewer steps.
 
