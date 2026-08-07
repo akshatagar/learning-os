@@ -2,6 +2,9 @@ import json
 import re
 
 import ollama
+from sqlalchemy import select
+
+from storage.models import Goal
 
 _ACRONYM = re.compile(r"\b[A-Z]{2,}\b")
 _LOWER_WORD = re.compile(r"\b[a-z]{2,}\b")
@@ -86,3 +89,35 @@ def call_ollama_draft(
         if phrase and phrase.lower() not in {s.lower() for s in seen}:
             seen.append(phrase)
     return seen
+
+
+def undrafted_goals(session) -> list[Goal]:
+    return list(
+        session.scalars(
+            select(Goal)
+            .where(Goal.concept_requirements.is_(None))
+            .order_by(Goal.id)
+        )
+    )
+
+
+def draft_all(session, draft_fn=call_ollama_draft) -> dict[str, int]:
+    """Draft requirements for every goal that has none, committing per row.
+
+    Same shape as score_all and plan_all: the NULL column is the work queue, so
+    interrupting a run loses nothing and re-running continues where it stopped.
+    """
+    counts = {"drafted": 0}
+    for goal in undrafted_goals(session):
+        requirements = draft_fn(goal.description, goal.category)
+        # Checked before anything is written. An empty list would satisfy
+        # IS NOT NULL and make a failed draft read as drafted forever after.
+        if not requirements:
+            raise ValueError(
+                f"Goal {goal.id} came back with zero requirements - "
+                "refusing to write an empty list"
+            )
+        goal.concept_requirements = json.dumps(requirements)
+        session.commit()
+        counts["drafted"] += 1
+    return counts
