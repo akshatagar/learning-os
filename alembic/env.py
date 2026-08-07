@@ -1,7 +1,9 @@
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.engine import make_url
 
 from alembic import context
 
@@ -57,6 +59,13 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # sqlite never creates a missing parent directory on its own, and this
+    # is the one place every entry point funnels through before a fresh
+    # clone has a data/ directory at all.
+    url = make_url(config.get_main_option("sqlalchemy.url"))
+    if url.database and url.database != ":memory:":
+        Path(url.database).parent.mkdir(parents=True, exist_ok=True)
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
