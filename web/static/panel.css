@@ -1,11 +1,17 @@
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   margin: 0;
   background: var(--ground);
   color: var(--line);
   font-family: var(--body);
   font-variant-numeric: tabular-nums;
+  /* The window is the frame: the page itself never scrolls, and the surface
+     owns the only scrollbar there is. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* An engraved legend plate, not a page header. */
@@ -23,8 +29,18 @@ body {
 }
 .plate__state { color: var(--line-muted); text-align: right; }
 
-main { padding: var(--step-4); }
+main {
+  padding: var(--step-4);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 #panel { width: 100%; height: auto; overflow: visible; }
+
+/* Holds the rail and the surface: a column until a stage opens on a wide
+   window, a row after. */
+.work { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 .stage__body {
   fill: none;
@@ -271,6 +287,41 @@ main { padding: var(--step-4); }
 /* The narrow drawing is a second plant, not a reflow of the first. */
 #panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
 
+/* Opening a stage swaps the wide drawing for the vertical one as a rail, so
+   the surface sits beside it and nothing has to be scrolled to. The condition
+   is "is a surface open". The media query below is the other, independent
+   reason to show the vertical drawing, and it overrides these rules because
+   it comes after them. */
+body[data-surface="open"] #panel { display: none; }
+
+body[data-surface="open"] .work {
+  flex-direction: row;
+  gap: var(--step-4);
+}
+
+body[data-surface="open"] #panel-narrow {
+  display: block;
+  /* Fitted by height, not pinned to a width. A fixed width fixes the height
+     too, and a drawing taller than the window would put the page scrollbar
+     back - the one thing this layout exists to remove. */
+  height: 100%;
+  width: auto;
+  max-width: 320px;
+  flex: 0 0 auto;
+}
+
+body[data-surface="open"] .surface {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0;
+  border-top: none;
+  border-bottom: none;
+  /* Still cut into the panel, now along a vertical line. */
+  border-left: 1px solid var(--line);
+  padding: 0 0 var(--step-4) var(--step-4);
+}
+
 @media (max-width: 720px) {
   /* Redrawn as a vertical run, never reflowed into cards: a card stack loses
      where in the process a thing is stuck, which is what this form exists
@@ -278,6 +329,24 @@ main { padding: var(--step-4); }
   main { padding: var(--step-3); }
   #panel { display: none; }
   #panel-narrow { display: block; }
+
+  /* The rail is a wide-window behaviour. Below this width the vertical
+     drawing is the whole view and the surface goes underneath, as it always
+     has - so every open-state rule above is undone here. */
+  body[data-surface="open"] .work { flex-direction: column; gap: 0; }
+  body[data-surface="open"] #panel-narrow {
+    height: auto;
+    width: 100%;
+    max-width: none;
+  }
+  body[data-surface="open"] .surface {
+    overflow-y: visible;
+    margin-top: var(--step-4);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-hairline);
+    border-left: none;
+    padding: var(--step-3) 0 var(--step-4);
+  }
 }
 
 /* The skills gate. No colour: a familiar skill is a fact about the person,

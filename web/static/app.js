@@ -56,6 +56,8 @@ async function openStage(group) {
   const stage = group.dataset.stage;
   surfaceTitle.textContent = stage.toUpperCase();
   surface.hidden = false;
+  // Drives the whole layout swap in panel.css. Nothing else reads it.
+  document.body.dataset.surface = "open";
   if (stage === "queue") {
     await renderQueue(refresh);
   } else if (stage === "concepts") {
@@ -96,6 +98,7 @@ document.getElementById("surface-close").addEventListener("click", () => {
   // A hidden surface must not keep a timer running behind it.
   stopTicking();
   surface.hidden = true;
+  delete document.body.dataset.surface;
   if (opener) opener.focus();
 });
 
