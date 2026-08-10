@@ -11,6 +11,11 @@ TITLE = "learning-os"
 WIDTH = 1280
 HEIGHT = 820
 
+# The rail is fitted to the window height, so a short window shrinks the
+# drawing rather than scrolling it. Past this floor the 11px stage labels
+# stop being readable, so the window refuses to go smaller.
+MIN_SIZE = (960, 640)
+
 # --ground from web/static/tokens.css. Duplicated here because the window
 # frame is painted before any stylesheet loads, and pywebview's default is
 # white: without this every launch flashes white against the panel's ground.
@@ -69,7 +74,7 @@ class BackgroundServer:
 
 
 def run(server, gui, title: str = TITLE, width: int = WIDTH,
-        height: int = HEIGHT) -> None:
+        height: int = HEIGHT, min_size: tuple[int, int] = MIN_SIZE) -> None:
     """Bind the server's life to the window's.
 
     Both are arguments rather than globals so this can be tested without
@@ -79,7 +84,7 @@ def run(server, gui, title: str = TITLE, width: int = WIDTH,
     server.wait_until_ready()
     gui.create_window(
         title, server.url, width=width, height=height,
-        background_color=BACKGROUND,
+        background_color=BACKGROUND, min_size=min_size,
     )
     try:
         # Blocks on the main thread until the window closes.

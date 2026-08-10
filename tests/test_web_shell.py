@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from web.shell import BACKGROUND, BackgroundServer, run
+from web.shell import BACKGROUND, MIN_SIZE, BackgroundServer, run
 
 
 def _free_port() -> int:
@@ -160,3 +160,13 @@ def test_the_server_stops_even_if_the_gui_raises():
         run(server, gui)
 
     assert "stop" in server.calls
+
+
+def test_the_window_cannot_be_shrunk_below_the_rail():
+    """The rail scales with the window, and past a point the stage labels
+    stop being readable. Refusing the resize beats degrading silently."""
+    server, gui = FakeServer(), FakeGui()
+
+    run(server, gui)
+
+    assert gui.windows[0]["min_size"] == MIN_SIZE
