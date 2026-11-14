@@ -22,6 +22,40 @@ MIN_SIZE = (960, 640)
 BACKGROUND = "#d7dcd3"
 
 
+def work_area() -> tuple[int, int] | None:
+    """The usable desktop (screen minus taskbar) in logical pixels, or None.
+
+    Read before pywebview starts, while this process is not yet DPI-aware, so
+    Windows reports logical pixels - the unit pywebview's sizes are in.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT()
+        SPI_GETWORKAREA = 0x0030
+        if not ctypes.windll.user32.SystemParametersInfoW(
+            SPI_GETWORKAREA, 0, ctypes.byref(rect), 0
+        ):
+            return None
+        return rect.right - rect.left, rect.bottom - rect.top
+    except (AttributeError, OSError):
+        # Not Windows, or the call is unavailable: keep the default size.
+        return None
+
+
+def fit_to(area: tuple[int, int] | None, size: tuple[int, int] = (WIDTH, HEIGHT),
+           min_size: tuple[int, int] = MIN_SIZE) -> tuple[int, int]:
+    """The opening window size: the default, shrunk to fit the work area,
+    never below the minimum the rail can be drawn at."""
+    if area is None:
+        return size
+    return tuple(
+        max(low, min(want, room))
+        for want, room, low in zip(size, area, min_size)
+    )
+
+
 class BackgroundServer:
     """uvicorn on its own thread, so a GUI can own the main one.
 
@@ -101,7 +135,8 @@ def main() -> None:
     # Built before the window opens, which is where the startup pause lives:
     # sentence-transformers loads once here instead of per CLI invocation.
     server = BackgroundServer(build_app())
-    run(server, webview)
+    width, height = fit_to(work_area())
+    run(server, webview, width=width, height=height)
 
 
 if __name__ == "__main__":

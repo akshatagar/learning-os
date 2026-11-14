@@ -1,7 +1,7 @@
 // Scoring. Never a gate — this lamp only ever says "running" — so the surface
 // carries the signal the drawing cannot: the run button exists only while
 // there is something for it to score.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 import { meter } from "./meter.js";
 
 const body = document.getElementById("surface-body");
@@ -66,6 +66,7 @@ export async function renderScoring(onChanged) {
   // during a run still knows one is going. Same rule as ingest.js.
   const busy = running.jobs.some((job) => job.kind === "score-opportunities");
 
+  if (!showing("scoring")) return;
   body.replaceChildren();
   count.textContent = board.scored.length ? `${board.scored.length} SCORED` : "";
 

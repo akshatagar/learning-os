@@ -47,7 +47,7 @@ uv run python -m web.serve    # same panel in a browser at http://127.0.0.1:8765
 
 The panel shows every pipeline stage with its count, lit amber only where something is waiting on you. From it you can manage goals (create, draft requirements with the local model, edit, delete), generate ideas, and work through the merge queue. Both entry points bind to `127.0.0.1` only. On Windows 10 you need the Edge WebView2 runtime; Windows 11 has it.
 
-Ingestion, skills entry, idea review, scoring and planning have no panel UI yet. `cli.py` is intentionally untracked, so a fresh clone has no command-line entry point; call the importable modules directly instead, for example:
+Every stage, ingestion included, has a panel surface. `cli.py` is intentionally untracked, so a fresh clone has no command-line entry point; for scripted use, call the importable modules directly, for example:
 
 ```python
 from ingestion.papers import ingest_paper

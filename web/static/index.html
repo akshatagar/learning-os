@@ -16,31 +16,34 @@
 <main>
 <p class="fault" id="fault" hidden></p>
 
-<svg id="panel" viewBox="0 0 1240 420" role="group"
+<svg id="panel" viewBox="0 0 790 360" role="group"
      aria-label="Pipeline mimic panel">
+  <!-- Two rows rather than one: an eight-stage single row is so wide that the
+       drawing could never be drawn larger than 1:1, which left 11px labels
+       and an empty lower window. Folded, it fits the window both ways. -->
   <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
-    <path d="M150 120 H190"/>
-    <path d="M300 120 H340"/>
-    <path d="M450 120 H490"/>
-    <path d="M600 120 H640"/>
-    <path d="M750 120 H790"/>
-    <path d="M900 120 H940"/>
-    <path d="M1050 120 H1090"/>
-    <path d="M545 144 V250 H600"/>
-    <path d="M995 250 H1050 V144" class="run--input"/>
+    <path d="M150 73 H190"/>
+    <path d="M300 73 H340"/>
+    <path d="M450 73 H490"/>
+    <path d="M600 73 H695 V110"/>
+    <path d="M545 96 V160 H95 V190"/>
+    <path d="M150 233 H190"/>
+    <path d="M300 233 H340"/>
+    <path d="M450 233 H490"/>
+    <path d="M640 313 H395 V256" class="run--input"/>
   </g>
 
   <g class="stages">
-    <g class="stage" data-stage="ingest"     transform="translate(40,98)"></g>
-    <g class="stage" data-stage="resolution" transform="translate(190,98)"></g>
-    <g class="stage" data-stage="queue"      transform="translate(340,98)"></g>
-    <g class="stage" data-stage="concepts"   transform="translate(490,98)"></g>
-    <g class="stage" data-stage="ideas"      transform="translate(640,98)"></g>
-    <g class="stage" data-stage="approval"   transform="translate(790,98)"></g>
-    <g class="stage" data-stage="scoring"    transform="translate(940,98)"></g>
-    <g class="stage" data-stage="planning"   transform="translate(1090,98)"></g>
-    <g class="stage" data-stage="goals"      transform="translate(600,228)"></g>
-    <g class="stage" data-stage="skills"     transform="translate(890,228)"></g>
+    <g class="stage" data-stage="ingest"     transform="translate(40,50)"></g>
+    <g class="stage" data-stage="resolution" transform="translate(190,50)"></g>
+    <g class="stage" data-stage="queue"      transform="translate(340,50)"></g>
+    <g class="stage" data-stage="concepts"   transform="translate(490,50)"></g>
+    <g class="stage" data-stage="goals"      transform="translate(640,130)"></g>
+    <g class="stage" data-stage="ideas"      transform="translate(40,210)"></g>
+    <g class="stage" data-stage="approval"   transform="translate(190,210)"></g>
+    <g class="stage" data-stage="scoring"    transform="translate(340,210)"></g>
+    <g class="stage" data-stage="planning"   transform="translate(490,210)"></g>
+    <g class="stage" data-stage="skills"     transform="translate(640,290)"></g>
   </g>
 </svg>
 
@@ -55,19 +58,19 @@
     <path d="M95 374 V390"/>
     <path d="M95 456 V472"/>
     <path d="M95 538 V554"/>
-    <path d="M205 292 V308"/>
-    <path d="M205 554 V538" class="run--input"/>
+    <path d="M150 269 H190"/>
+    <path d="M190 515 H150" class="run--input"/>
   </g>
   <g class="stages">
     <g class="stage" data-stage="ingest"     transform="translate(40,0)"></g>
     <g class="stage" data-stage="resolution" transform="translate(40,82)"></g>
     <g class="stage" data-stage="queue"      transform="translate(40,164)"></g>
     <g class="stage" data-stage="concepts"   transform="translate(40,246)"></g>
-    <g class="stage" data-stage="goals"      transform="translate(150,310)"></g>
+    <g class="stage" data-stage="goals"      transform="translate(190,246)"></g>
     <g class="stage" data-stage="ideas"      transform="translate(40,328)"></g>
     <g class="stage" data-stage="approval"   transform="translate(40,410)"></g>
     <g class="stage" data-stage="scoring"    transform="translate(40,492)"></g>
-    <g class="stage" data-stage="skills"     transform="translate(150,556)"></g>
+    <g class="stage" data-stage="skills"     transform="translate(190,492)"></g>
     <g class="stage" data-stage="planning"   transform="translate(40,574)"></g>
   </g>
 </svg>

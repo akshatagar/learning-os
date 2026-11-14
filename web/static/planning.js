@@ -1,7 +1,7 @@
 // Planning. Like scoring, never a gate. The blocked group carries the warning
 // plan_all prints and a job thread swallows — without it, a row that scoring
 // has not reached is simply absent here, and the surface cannot say why.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
@@ -62,6 +62,7 @@ export async function renderPlanning(onChanged) {
   ]);
   const busy = running.jobs.some((job) => job.kind === "plan-opportunities");
 
+  if (!showing("planning")) return;
   body.replaceChildren();
   count.textContent = board.planned.length
     ? `${board.planned.length} PLANNED`

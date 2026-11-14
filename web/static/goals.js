@@ -1,7 +1,7 @@
 // The goals view. The concept store answers "what do I hold?"; this answers
 // "what do I hold against what I said I wanted?" — and now turns the shortfall
 // into something to read.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 import { meter } from "./meter.js";
 
 const body = document.getElementById("surface-body");
@@ -285,6 +285,7 @@ export async function renderGoals(onStarted) {
   const busy = running.jobs.some((job) => job.kind === "recommend");
   const drafting = running.jobs.some((job) => job.kind === "draft-requirements");
 
+  if (!showing("goals")) return;
   body.replaceChildren();
   count.textContent = goals.length ? `${goals.length} GOALS` : "";
 

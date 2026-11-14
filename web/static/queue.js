@@ -1,6 +1,6 @@
 // The merge-queue gate. One entry at a time, in full, because the decision
 // needs the model's reasoning and the live neighbours side by side.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 import { meter } from "./meter.js";
 
 const body = document.getElementById("surface-body");
@@ -72,6 +72,7 @@ export async function renderQueue(onResolved) {
     fetch("/queue/agreement").then((response) => response.json()),
   ]);
 
+  if (!showing("queue")) return;
   body.replaceChildren();
   count.textContent = next.remaining ? `${next.remaining} WAITING` : "";
 

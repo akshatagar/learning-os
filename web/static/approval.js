@@ -2,7 +2,7 @@
 // comparative: you are choosing what to build, and what else is on offer
 // changes the answer. The merge queue shows one at a time for the opposite
 // reason — that decision is independent of every other one.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
@@ -62,6 +62,7 @@ export async function renderApproval(onResolved) {
   const { opportunities } = await fetch("/approval")
     .then((response) => response.json());
 
+  if (!showing("approval")) return;
   body.replaceChildren();
   count.textContent = opportunities.length
     ? `${opportunities.length} WAITING`

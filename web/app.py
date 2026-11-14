@@ -103,6 +103,21 @@ class RequirementsRequest(BaseModel):
     requirements: list[str]
 
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files the browser must check before reusing.
+
+    A webview keeps app.js and friends in its cache across launches, so after
+    an update the window could run the old panel against the new server.
+    no-cache still allows the cached copy, but only after a 304 says it is
+    current - one cheap local round trip per file.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
     app = FastAPI(title="learning-os")
     app.state.engine = engine
@@ -636,7 +651,9 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
     # would shadow every one of them.
     app.mount(
         "/",
-        StaticFiles(directory=Path(__file__).parent / "static", html=True),
+        RevalidatedStaticFiles(
+            directory=Path(__file__).parent / "static", html=True,
+        ),
         name="static",
     )
 

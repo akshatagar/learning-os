@@ -1206,3 +1206,15 @@ def test_resolution_is_empty_before_anything_is_ingested(engine, collection):
     client = TestClient(create_app(engine, collection))
 
     assert client.get("/resolution").json() == {"total": 0, "adjudications": []}
+
+
+@pytest.mark.parametrize("path", ["/", "/app.js", "/panel.css"])
+def test_the_panel_files_are_revalidated_on_every_load(engine, collection, path):
+    """The window would otherwise run a cached app.js after an update, which
+    is how a fixed panel kept showing its old behaviour."""
+    client = TestClient(create_app(engine, collection))
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"

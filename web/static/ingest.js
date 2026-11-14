@@ -2,7 +2,7 @@
 // the lamp is how long it has been going — enough to tell a slow parse from
 // a stuck one, and no claim about which step it is on, because a single
 // LangGraph invoke offers no way to know.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
@@ -107,6 +107,7 @@ export async function renderIngest(onStarted) {
   // opened during a run still knows how long it has been going.
   const job = running.jobs.find((candidate) => candidate.kind === "ingest");
 
+  if (!showing("ingest")) return;
   stopTicking();
   body.replaceChildren();
   count.textContent = history.entries.length

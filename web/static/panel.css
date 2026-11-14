@@ -36,11 +36,21 @@ main {
   display: flex;
   flex-direction: column;
 }
-#panel { width: 100%; height: auto; overflow: visible; }
+/* The drawing fills whatever the window leaves it, in both directions, and
+   keeps its proportions (the SVG default, xMidYMid meet). On a 1280x672
+   window that draws it at about 1.4x, so the 11px labels read at about 16. */
+#panel {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
 
 /* Holds the rail and the surface: a column until a stage opens on a wide
    window, a row after. */
-.work { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.work { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; }
+body[data-surface="open"] .work { flex: 1 1 auto; }
 
 .stage__body {
   fill: none;
@@ -326,9 +336,12 @@ body[data-surface="open"] .surface {
   /* Redrawn as a vertical run, never reflowed into cards: a card stack loses
      where in the process a thing is stuck, which is what this form exists
      to show. */
-  main { padding: var(--step-3); }
+  /* The first stage's label sits above the drawing's top edge, so the top
+     keeps the full step or the label runs into the plate's rule. */
+  main { padding: var(--step-4) var(--step-3) var(--step-3); }
   #panel { display: none; }
   #panel-narrow { display: block; }
+  .work { flex: 1 1 auto; }
 
   /* The rail is a wide-window behaviour. Below this width the vertical
      drawing is the whole view and the surface goes underneath, as it always

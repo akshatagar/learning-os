@@ -1,7 +1,7 @@
 // The skills gate. This is the one table only the operator writes, and the
 // only stage whose lamp holds when its count is zero — so every write has to
 // tell the panel, or adding the first skill leaves the stage lit behind you.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
@@ -41,6 +41,7 @@ export async function renderSkills(onChanged) {
   const { skills, bands } = await fetch("/skills")
     .then((response) => response.json());
 
+  if (!showing("skills")) return;
   body.replaceChildren();
   count.textContent = skills.length ? `${skills.length} ON RECORD` : "";
 

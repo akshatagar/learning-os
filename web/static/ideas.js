@@ -1,6 +1,6 @@
 // The idea archive and the generator. Every opportunity ever written, grouped
 // by where it stands, plus the one control that makes more of them.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 
 const body = document.getElementById("surface-body");
 const count = document.getElementById("surface-count");
@@ -81,6 +81,7 @@ export async function renderIdeas(onChanged) {
   // during a run still knows one is going. Same rule as ingest.js.
   const busy = running.jobs.some((job) => job.kind === "generate-ideas");
 
+  if (!showing("ideas")) return;
   body.replaceChildren();
   count.textContent = opportunities.length
     ? `${opportunities.length} TOTAL`

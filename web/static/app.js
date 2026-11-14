@@ -51,10 +51,26 @@ function showPlaceholder() {
   surfaceBody.replaceChildren(note);
 }
 
+// Shown the moment a stage is opened, so the previous stage's rows never sit
+// under the new title while the new request is in flight.
+function showLoading() {
+  surfaceCount.textContent = "";
+  const note = document.createElement("p");
+  note.className = "surface__empty";
+  note.textContent = "Reading…";
+  surfaceBody.replaceChildren(note);
+}
+
 async function openStage(group) {
   opener = group;
   const stage = group.dataset.stage;
+  // The ingest clock belongs to the ingest surface only.
+  stopTicking();
   surfaceTitle.textContent = stage.toUpperCase();
+  // Read by showing() in dom.js: a render whose stage is no longer open drops
+  // its response instead of painting it here.
+  surface.dataset.stage = stage;
+  showLoading();
   surface.hidden = false;
   // Drives the whole layout swap in panel.css. Nothing else reads it.
   document.body.dataset.surface = "open";
@@ -94,12 +110,30 @@ for (const group of document.querySelectorAll(".stage")) {
   });
 }
 
-document.getElementById("surface-close").addEventListener("click", () => {
+function closeSurface() {
   // A hidden surface must not keep a timer running behind it.
   stopTicking();
   surface.hidden = true;
   delete document.body.dataset.surface;
-  if (opener) opener.focus();
+  // Focus goes back to the stage that was opened. Opened from the rail, that
+  // node is hidden now that the wide drawing is back, so the visible copy of
+  // the same stage takes it instead.
+  if (opener) {
+    const visible = [...document.querySelectorAll(
+      `.stage[data-stage="${opener.dataset.stage}"]`,
+    )].find((node) => node.getClientRects().length);
+    (visible || opener).focus();
+  }
+}
+
+document.getElementById("surface-close").addEventListener("click", closeSurface);
+
+// Escape closes the surface, the same as CLOSE.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !surface.hidden) {
+    event.preventDefault();
+    closeSurface();
+  }
 });
 
 // Every event re-reads /state rather than patching the DOM from the payload.

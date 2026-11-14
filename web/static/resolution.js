@@ -4,7 +4,7 @@
 //
 // The panel's only surface with no actions: adjudication happens inside
 // ingestion, which is why this lamp follows the ingest job.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 import { meter } from "./meter.js";
 
 const body = document.getElementById("surface-body");
@@ -54,6 +54,7 @@ export async function renderResolution() {
     .then((response) => response.json());
   const { total, adjudications } = payload;
 
+  if (!showing("resolution")) return;
   body.replaceChildren();
   count.textContent = total ? `${total} JUDGED` : "";
 

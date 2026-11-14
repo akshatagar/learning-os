@@ -1,7 +1,7 @@
 // The concept store. It is never a gate, so the ordering is the whole
 // design: weakest first, because a concept under the threshold is invisible
 // to idea generation and counts as weak against every goal.
-import { el } from "./dom.js";
+import { el, showing } from "./dom.js";
 import { meter } from "./meter.js";
 
 const body = document.getElementById("surface-body");
@@ -31,6 +31,7 @@ export async function renderConcepts() {
   const payload = await fetch("/concepts").then((response) => response.json());
   const { concepts, threshold } = payload;
 
+  if (!showing("concepts")) return;
   body.replaceChildren();
   count.textContent = concepts.length ? `${concepts.length} HELD` : "";
 

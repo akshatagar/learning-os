@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from web.shell import BACKGROUND, MIN_SIZE, BackgroundServer, run
+from web.shell import BACKGROUND, HEIGHT, MIN_SIZE, WIDTH, BackgroundServer, fit_to, run
 
 
 def _free_port() -> int:
@@ -170,3 +170,21 @@ def test_the_window_cannot_be_shrunk_below_the_rail():
     run(server, gui)
 
     assert gui.windows[0]["min_size"] == MIN_SIZE
+
+
+def test_the_window_opens_at_full_size_when_the_screen_has_room():
+    assert fit_to((1920, 1040)) == (WIDTH, HEIGHT)
+
+
+def test_the_window_opens_no_larger_than_the_work_area():
+    """1920x1080 at 150% scaling leaves a 1280x672 logical work area. The
+    window used to open at 820 tall and put its bottom edge off-screen."""
+    assert fit_to((1280, 672)) == (1280, 672)
+
+
+def test_the_window_never_opens_below_its_minimum():
+    assert fit_to((800, 500)) == MIN_SIZE
+
+
+def test_an_unknown_work_area_keeps_the_default_size():
+    assert fit_to(None) == (WIDTH, HEIGHT)
