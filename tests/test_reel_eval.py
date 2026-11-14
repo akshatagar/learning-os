@@ -79,3 +79,14 @@ def test_read_urls_returns_canonical_links(tmp_path):
     path = tmp_path / "urls.txt"
     path.write_text("https://www.instagram.com/reel/X/?utm_source=a\n", encoding="utf-8")
     assert read_urls(path) == ["https://www.instagram.com/reel/X/"]
+
+
+def test_csv_cells_cannot_become_spreadsheet_formulas():
+    from reel_inbox.eval import spreadsheet_safe
+
+    assert spreadsheet_safe("=HYPERLINK(\"x\")") == "'=HYPERLINK(\"x\")"
+    assert spreadsheet_safe("+1") == "'+1"
+    assert spreadsheet_safe("@SUM") == "'@SUM"
+    assert spreadsheet_safe("Byte Latent Transformer") == "Byte Latent Transformer"
+    assert spreadsheet_safe(0.9) == 0.9
+    assert spreadsheet_safe(None) is None

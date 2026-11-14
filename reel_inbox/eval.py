@@ -28,6 +28,17 @@ def canonical_url(url: str) -> str:
     return urlunparse(parts._replace(query=urlencode(kept), fragment=""))
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def spreadsheet_safe(value):
+    """A cell a spreadsheet will show as text, never run as a formula.
+    Referents and captions come from the video, so they are untrusted."""
+    if isinstance(value, str) and value.startswith(_FORMULA_START):
+        return "'" + value
+    return value
+
+
 def read_urls(path) -> list[str]:
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     return [canonical_url(line) for line in lines

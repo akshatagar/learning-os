@@ -69,6 +69,10 @@ class ReelExtractor:
             answer = normalize(self.llm_fn(evidence))
         except Exception as error:
             raise ExtractionFailed("llm_error", f"{type(error).__name__}: {error}") from error
+        # Only a link the reel itself shows survives. Anything else is the
+        # model's guess, and Explore would open it in the browser.
+        if answer["source_url_guess"] and answer["source_url_guess"] not in evidence:
+            answer["source_url_guess"] = None
         if answer["referent"] is None:
             raise ExtractionFailed("no_referent", answer.get("why_explorable") or "")
         return answer

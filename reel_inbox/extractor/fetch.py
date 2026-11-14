@@ -56,22 +56,41 @@ def classify_error(message: str) -> str:
     return "fetch_error"
 
 
-def _site(url: str) -> str:
+# Cookies are only ever used for these sites. Any other URL is fetched
+# without them, so a pasted link cannot carry a browser's session elsewhere.
+_COOKIE_SITES = {"instagram.com": "instagram.com", "youtube.com": "youtube.com",
+                 "youtu.be": "youtube.com"}
+
+# Captions are small; anything bigger is not a caption file.
+_CAPTION_LIMIT = 2_000_000
+
+
+def _on(host: str, site: str) -> bool:
+    """host is site or a subdomain of it. Plain endswith would accept
+    notinstagram.com as instagram.com."""
+    return host == site or host.endswith("." + site)
+
+
+def _cookie_site(url: str) -> str | None:
     host = (urlparse(url).hostname or "").lower()
-    return ".".join(host.split(".")[-2:])
+    return next((cookies_for for site, cookies_for in _COOKIE_SITES.items()
+                 if _on(host, site)), None)
 
 
 def choose_cookie_source(url: str, loaders: dict) -> str | None:
     """The first source, in order, that loads and holds cookies for the
-    URL's site. A source that cannot be read (Chrome's locked, app-bound
-    encrypted store, say) is skipped rather than fatal."""
-    site = _site(url)
+    URL's site, which must be one of _COOKIE_SITES. A source that cannot be
+    read (Chrome's locked, app-bound encrypted store, say) is skipped rather
+    than fatal."""
+    site = _cookie_site(url)
+    if site is None:
+        return None
     for name, load in loaders.items():
         try:
             jar = load()
         except Exception:
             continue
-        if any(cookie.domain.lstrip(".").endswith(site) for cookie in jar):
+        if any(_on(cookie.domain.lstrip(".").lower(), site) for cookie in jar):
             return name
     return None
 
@@ -113,7 +132,7 @@ class YtDlpFetcher:
         return loaders
 
     def _cookie_params(self, url: str) -> dict:
-        site = _site(url)
+        site = _cookie_site(url)
         if site not in self._chosen:
             self._chosen[site] = choose_cookie_source(url, self._loaders())
         source = self.last_cookie_source = self._chosen[site]
@@ -129,10 +148,13 @@ class YtDlpFetcher:
                          if lang == "en" or lang.startswith("en-") or lang.endswith("-orig")]
             for lang in languages:
                 for entry in tracks[lang]:
-                    if entry.get("ext") != "vtt" or not entry.get("url"):
+                    # The URL comes from site metadata: https only, size capped.
+                    if (entry.get("ext") != "vtt"
+                            or not str(entry.get("url", "")).startswith("https://")):
                         continue
                     try:
-                        raw = ydl.urlopen(entry["url"]).read().decode("utf-8", "replace")
+                        raw = ydl.urlopen(entry["url"]).read(_CAPTION_LIMIT)
+                        raw = raw.decode("utf-8", "replace")
                     except Exception:
                         continue
                     text = vtt_to_text(raw)

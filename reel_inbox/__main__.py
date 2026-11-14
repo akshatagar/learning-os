@@ -8,7 +8,7 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 
-from reel_inbox.eval import format_table, read_urls, run_eval
+from reel_inbox.eval import format_table, read_urls, run_eval, spreadsheet_safe
 from reel_inbox.extractor.fetch import YtDlpFetcher
 from reel_inbox.extractor.llm import OllamaReferent
 from reel_inbox.extractor.pipeline import ExtractionFailed, ReelExtractor
@@ -84,7 +84,7 @@ def main(argv=None) -> int:
     with open(out, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]) if rows else ["url"])
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: spreadsheet_safe(v) for k, v in row.items()} for row in rows)
     print(format_table(rows))
     print(f"\nwritten: {out} (fill in the label column)")
     return 0
