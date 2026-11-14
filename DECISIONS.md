@@ -13,6 +13,14 @@ The Reel Inbox work runs in five gated phases on `feat/reel-inbox`, with one com
 - **The `worktree-conversational-orchestration` branch stays unmerged** and untouched by this work.
 - **`cli.py` stays untracked.** Its dead `seed-goals` command was removed so it imports again.
 
+## 2026-11-14 — Reel Inbox extractor (Phase 2 spike)
+
+- **`extract(url)` is the seam.** `reel_inbox.extractor.Extractor` is a protocol: one method that returns the six specified fields or raises `ExtractionFailed(reason)`. The pipeline behind it is yt-dlp → captions, else faster-whisper (`small`, CPU int8, downloaded on first use to `%APPDATA%\LearningOS\models`) → optional frame OCR (rapidocr) → one `qwen3:8b` call with a JSON schema and thinking off.
+- **One Instagram page request per reel.** Media is downloaded from the info already fetched. Audio and video are separate streams, because joining them would need ffmpeg and YouTube often offers no combined file.
+- **Shared links are canonicalized.** Every query parameter except YouTube's `v` is dropped: they are tracking, they can identify the sharer, and they are never needed to fetch.
+- **Cookies: Firefox, then Chrome, then a `cookies.txt`.** On this machine only a cookies file can work. Chrome and Edge refuse ("Could not copy Chrome cookie database"), and the leftover Firefox profile holds no Instagram cookies.
+- **YouTube media now needs a JS runtime (deno).** Without one, YouTube media downloads return 403. Shorts with captions are unaffected, and Instagram never needs it. Packaging has to ship deno next to yt-dlp.exe, or accept captions-only YouTube.
+
 ## 2026-11-14 — Panel: the wide drawing folds onto two rows
 
 Eight stages in one row produced a 1240×420 drawing that could never be drawn larger than 1:1. That meant 11px labels and an empty lower window. The main line now runs on two rows joined by a return run from Concept Store to Ideas, with Goals and Skills on side branches. The drawing is fitted to the window in both directions, so at 1280×672 (1920×1080 at 150% scaling) it draws at about 1.4× and labels read at about 16px. The mimic-panel world, palette and type are unchanged. The window also opens no larger than the screen's work area: it used to open 820 tall on a 672-tall work area.

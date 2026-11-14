@@ -35,3 +35,8 @@ DESIGN.md
 .obsidian/
 
 screenshots/
+# Reel Inbox: browser cookies and eval output never enter the repo
+cookies.txt
+*cookies*.txt
+*.cookies
+eval-*.csv
