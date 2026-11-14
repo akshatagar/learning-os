@@ -90,3 +90,10 @@ def test_csv_cells_cannot_become_spreadsheet_formulas():
     assert spreadsheet_safe("Byte Latent Transformer") == "Byte Latent Transformer"
     assert spreadsheet_safe(0.9) == 0.9
     assert spreadsheet_safe(None) is None
+
+
+def test_leading_whitespace_does_not_hide_a_formula():
+    from reel_inbox.eval import spreadsheet_safe
+
+    assert spreadsheet_safe(" =1+1") == "' =1+1"
+    assert spreadsheet_safe("\n@SUM") == "'\n@SUM"

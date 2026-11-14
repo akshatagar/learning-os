@@ -28,13 +28,15 @@ def canonical_url(url: str) -> str:
     return urlunparse(parts._replace(query=urlencode(kept), fragment=""))
 
 
-_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
 def spreadsheet_safe(value):
     """A cell a spreadsheet will show as text, never run as a formula.
-    Referents and captions come from the video, so they are untrusted."""
-    if isinstance(value, str) and value.startswith(_FORMULA_START):
+    Referents and captions come from the video, so they are untrusted.
+    Leading whitespace is looked past: some spreadsheets trim it first."""
+    if isinstance(value, str) and (value.startswith(_FORMULA_START)
+                                   or value.lstrip().startswith(_FORMULA_START)):
         return "'" + value
     return value
 

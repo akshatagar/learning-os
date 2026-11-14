@@ -71,6 +71,18 @@ def _on(host: str, site: str) -> bool:
     return host == site or host.endswith("." + site)
 
 
+# Hosts caption files are served from. The URL arrives in site metadata, so
+# anything else (another domain, a bare IP, plain http) is not fetched.
+_CAPTION_HOSTS = ("youtube.com", "googlevideo.com", "instagram.com",
+                  "cdninstagram.com", "fbcdn.net")
+
+
+def caption_url_allowed(url: str) -> bool:
+    parts = urlparse(str(url))
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and any(_on(host, site) for site in _CAPTION_HOSTS)
+
+
 def _cookie_site(url: str) -> str | None:
     host = (urlparse(url).hostname or "").lower()
     return next((cookies_for for site, cookies_for in _COOKIE_SITES.items()
@@ -148,9 +160,9 @@ class YtDlpFetcher:
                          if lang == "en" or lang.startswith("en-") or lang.endswith("-orig")]
             for lang in languages:
                 for entry in tracks[lang]:
-                    # The URL comes from site metadata: https only, size capped.
-                    if (entry.get("ext") != "vtt"
-                            or not str(entry.get("url", "")).startswith("https://")):
+                    # The URL comes from site metadata: known hosts only,
+                    # size capped.
+                    if entry.get("ext") != "vtt" or not caption_url_allowed(entry.get("url", "")):
                         continue
                     try:
                         raw = ydl.urlopen(entry["url"]).read(_CAPTION_LIMIT)
