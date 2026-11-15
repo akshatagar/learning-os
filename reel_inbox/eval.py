@@ -6,6 +6,7 @@ login-wall signal, leaving the rest unfetched.
 """
 import random
 import time
+import unicodedata
 from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -31,19 +32,24 @@ def canonical_url(url: str) -> str:
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
-# Looked past before the check: whitespace, control characters, zero-width
-# characters and the byte-order mark can all sit in front of a formula.
-_INVISIBLE = ("".join(chr(c) for c in range(0x21))
-              + "\x7f ​‌‍⁠﻿")
+# Unicode categories a spreadsheet may drop in front of a formula: controls,
+# format characters (zero-width, BOM, soft hyphen) and every kind of space.
+# A rule by category rather than a list, so no space character is missed.
+_INVISIBLE_CATEGORIES = {"Cc", "Cf", "Zs", "Zl", "Zp"}
+
+
+def _visible_start(value: str) -> str:
+    for i, char in enumerate(value):
+        if not (char.isspace() or unicodedata.category(char) in _INVISIBLE_CATEGORIES):
+            return value[i:]
+    return ""
 
 
 def spreadsheet_safe(value):
     """A cell a spreadsheet will show as text, never run as a formula.
-    Referents and captions come from the video, so they are untrusted.
-    Leading invisible characters are looked past: spreadsheets may drop
-    them before deciding."""
+    Referents and captions come from the video, so they are untrusted."""
     if isinstance(value, str) and (value.startswith(_FORMULA_START)
-                                   or value.lstrip(_INVISIBLE).startswith(_FORMULA_START)):
+                                   or _visible_start(value).startswith(_FORMULA_START)):
         return "'" + value
     return value
 

@@ -1,4 +1,6 @@
 """The eval command's run loop and table, with a fake extractor and clock."""
+import pytest
+
 from reel_inbox.eval import format_table, read_urls, run_eval
 from reel_inbox.extractor.pipeline import ExtractionFailed
 
@@ -107,3 +109,10 @@ def test_invisible_leading_characters_do_not_hide_a_formula():
     assert spreadsheet_safe("\u200b=1+1").startswith("'")
     assert spreadsheet_safe("\ufeff@SUM").startswith("'")
     assert spreadsheet_safe("\x01-2").startswith("'")
+
+
+@pytest.mark.parametrize("hidden", [" =1+1", "\u3000@SUM", "\u2028=1", "\u2003+1", "\u00ad-1"])
+def test_any_unicode_space_or_format_character_is_looked_past(hidden):
+    from reel_inbox.eval import spreadsheet_safe
+
+    assert spreadsheet_safe(hidden).startswith("'")
