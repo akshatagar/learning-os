@@ -32,15 +32,14 @@ def canonical_url(url: str) -> str:
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
-# Unicode categories a spreadsheet may drop in front of a formula: controls,
-# format characters (zero-width, BOM, soft hyphen) and every kind of space.
-# A rule by category rather than a list, so no space character is missed.
-_INVISIBLE_CATEGORIES = {"Cc", "Cf", "Zs", "Zl", "Zp"}
+# Deny by default: everything Unicode files under Other (control, format,
+# private use, unassigned) or Separator (every space), and anything not
+# printable, may be dropped by a spreadsheet before it reads a formula.
 
 
 def _visible_start(value: str) -> str:
     for i, char in enumerate(value):
-        if not (char.isspace() or unicodedata.category(char) in _INVISIBLE_CATEGORIES):
+        if char.isprintable() and unicodedata.category(char)[0] not in "CZ":
             return value[i:]
     return ""
 

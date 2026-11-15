@@ -116,3 +116,10 @@ def test_any_unicode_space_or_format_character_is_looked_past(hidden):
     from reel_inbox.eval import spreadsheet_safe
 
     assert spreadsheet_safe(hidden).startswith("'")
+
+
+@pytest.mark.parametrize("hidden", ["\ue000=1", "\U000e0001@SUM", "\u0378+1"])
+def test_private_use_and_unassigned_characters_are_looked_past(hidden):
+    from reel_inbox.eval import spreadsheet_safe
+
+    assert spreadsheet_safe(hidden).startswith("'")
