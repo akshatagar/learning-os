@@ -31,12 +31,19 @@ def canonical_url(url: str) -> str:
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
+# Looked past before the check: whitespace, control characters, zero-width
+# characters and the byte-order mark can all sit in front of a formula.
+_INVISIBLE = ("".join(chr(c) for c in range(0x21))
+              + "\x7f ​‌‍⁠﻿")
+
+
 def spreadsheet_safe(value):
     """A cell a spreadsheet will show as text, never run as a formula.
     Referents and captions come from the video, so they are untrusted.
-    Leading whitespace is looked past: some spreadsheets trim it first."""
+    Leading invisible characters are looked past: spreadsheets may drop
+    them before deciding."""
     if isinstance(value, str) and (value.startswith(_FORMULA_START)
-                                   or value.lstrip().startswith(_FORMULA_START)):
+                                   or value.lstrip(_INVISIBLE).startswith(_FORMULA_START)):
         return "'" + value
     return value
 
@@ -64,7 +71,6 @@ def _row(url, answer=None, reason=None, detail="", sources=()):
         "failure_reason": reason,
         "detail": detail,
         "evidence": ", ".join(sources),
-        "label": "",
     }
 
 
@@ -94,14 +100,14 @@ def run_eval(extractor, urls, delay=(20, 90), sleep=time.sleep,
 
 def format_table(rows) -> str:
     lines = [
-        "| url | referent | confidence | failure reason | label |",
-        "|---|---|---|---|---|",
+        "| url | referent | confidence | failure reason |",
+        "|---|---|---|---|",
     ]
     for row in rows:
         confidence = "" if row["confidence"] is None else f"{row['confidence']:.2f}"
         lines.append(
             f"| {row['url']} | {row['referent'] or ''} | {confidence} "
-            f"| {row['failure_reason'] or ''} |  |"
+            f"| {row['failure_reason'] or ''} |"
         )
     attempted = [r for r in rows if r["failure_reason"] != NOT_RUN]
     found = sum(1 for r in attempted if r["referent"])

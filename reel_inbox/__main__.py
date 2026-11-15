@@ -86,7 +86,7 @@ def main(argv=None) -> int:
         writer.writeheader()
         writer.writerows({k: spreadsheet_safe(v) for k, v in row.items()} for row in rows)
     print(format_table(rows))
-    print(f"\nwritten: {out} (fill in the label column)")
+    print(f"\nwritten: {out}")
     return 0
 
 

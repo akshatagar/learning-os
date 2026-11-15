@@ -54,8 +54,10 @@ def test_the_table_reports_the_referent_found_rate():
         {"url": "u2", "referent": None, "confidence": None, "failure_reason": "no_referent"},
     ]
     table = format_table(rows)
-    assert "| u1 | BLT | 0.80 |  |  |" in table
-    assert "| u2 |  |  | no_referent |  |" in table
+    assert "| u1 | BLT | 0.80 |  |" in table
+    assert "| u2 |  |  | no_referent |" in table
+    # Every captured reel is assumed worth acting on: nothing to label.
+    assert "label" not in table
     assert "referent found: 1/2 (50%)" in table
     assert "no_referent: 1" in table
 
@@ -97,3 +99,11 @@ def test_leading_whitespace_does_not_hide_a_formula():
 
     assert spreadsheet_safe(" =1+1") == "' =1+1"
     assert spreadsheet_safe("\n@SUM") == "'\n@SUM"
+
+
+def test_invisible_leading_characters_do_not_hide_a_formula():
+    from reel_inbox.eval import spreadsheet_safe
+
+    assert spreadsheet_safe("\u200b=1+1").startswith("'")
+    assert spreadsheet_safe("\ufeff@SUM").startswith("'")
+    assert spreadsheet_safe("\x01-2").startswith("'")

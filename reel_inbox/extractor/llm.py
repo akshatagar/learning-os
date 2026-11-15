@@ -1,10 +1,10 @@
 import json
-import re
 
 from reel_inbox.extractor.schema import JSON_SCHEMA, REFERENT_TYPES
 
-# Removed from untrusted text so a caption cannot close the fence early.
-_FENCE = re.compile(r"</?\s*evidence\s*>", re.IGNORECASE)
+# Angle brackets in untrusted text become look-alikes, so no tag - nested,
+# split or otherwise - can close the evidence fence early.
+_BRACKETS = str.maketrans({"<": "‹", ">": "›"})
 
 SYSTEM = f"""You read the evidence gathered from one short educational video \
 (an Instagram Reel or YouTube Short) and name the specific thing it points at.
@@ -44,7 +44,7 @@ def build_evidence(meta: dict, spoken: str | None, on_screen: str | None,
         ("On-screen text", on_screen),
     ]
     present = [
-        (label, _FENCE.sub("", " ".join(str(value).split()))[:limit])
+        (label, " ".join(str(value).split()).translate(_BRACKETS)[:limit])
         for label, value in parts
         if value and str(value).strip()
     ]

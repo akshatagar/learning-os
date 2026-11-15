@@ -13,6 +13,10 @@ The Reel Inbox work runs in five gated phases on `feat/reel-inbox`, with one com
 - **The `worktree-conversational-orchestration` branch stays unmerged** and untouched by this work.
 - **`cli.py` stays untracked.** Its dead `seed-goals` command was removed so it imports again.
 
+## 2026-11-14 — Every captured reel is assumed actionable; no labelling
+
+Only reels worth following up get captured in the first place, so neither the eval nor the app checks whether a reel deserves action. The extractor's job is to turn each reel into a referent and a next step. The eval reports only the referent-found rate and failure reasons: the label column is gone, and no grounding or search checks were added. On the first eval (9 Instagram reels, no cookies) 9 of 9 produced a referent after one retry of an Ollama out-of-memory error, so Phase 3 is a go.
+
 ## 2026-11-14 — Reel Inbox extractor (Phase 2 spike)
 
 - **`extract(url)` is the seam.** `reel_inbox.extractor.Extractor` is a protocol: one method that returns the six specified fields or raises `ExtractionFailed(reason)`. The pipeline behind it is yt-dlp → captions, else faster-whisper (`small`, CPU int8, downloaded on first use to `%APPDATA%\LearningOS\models`) → optional frame OCR (rapidocr) → one `qwen3:8b` call with a JSON schema and thinking off.

@@ -6,6 +6,8 @@ per reel, not two.
 """
 import copy
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from functools import partial
 from http.cookiejar import CookieJar, MozillaCookieJar
@@ -83,6 +85,22 @@ def caption_url_allowed(url: str) -> bool:
     return parts.scheme == "https" and any(_on(host, site) for site in _CAPTION_HOSTS)
 
 
+class _AllowlistedRedirects(urllib.request.HTTPRedirectHandler):
+    """Follows a caption redirect only to another allowed caption host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not caption_url_allowed(newurl):
+            raise urllib.error.URLError(f"caption redirect off the allowlist: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch_caption(url: str) -> str:
+    """No cookies, every redirect hop re-checked, size and time capped."""
+    opener = urllib.request.build_opener(_AllowlistedRedirects())
+    with opener.open(url, timeout=15) as response:
+        return response.read(_CAPTION_LIMIT).decode("utf-8", "replace")
+
+
 def _cookie_site(url: str) -> str | None:
     host = (urlparse(url).hostname or "").lower()
     return next((cookies_for for site, cookies_for in _COOKIE_SITES.items()
@@ -154,7 +172,7 @@ class YtDlpFetcher:
             return {"cookiesfrombrowser": (source,)}
         return {}
 
-    def _captions(self, ydl, info) -> str | None:
+    def _captions(self, info) -> str | None:
         for tracks in (info.get("subtitles") or {}, info.get("automatic_captions") or {}):
             languages = [lang for lang in tracks
                          if lang == "en" or lang.startswith("en-") or lang.endswith("-orig")]
@@ -165,8 +183,7 @@ class YtDlpFetcher:
                     if entry.get("ext") != "vtt" or not caption_url_allowed(entry.get("url", "")):
                         continue
                     try:
-                        raw = ydl.urlopen(entry["url"]).read(_CAPTION_LIMIT)
-                        raw = raw.decode("utf-8", "replace")
+                        raw = _fetch_caption(entry["url"])
                     except Exception:
                         continue
                     text = vtt_to_text(raw)
@@ -192,7 +209,7 @@ class YtDlpFetcher:
                 info = ydl.extract_info(url, download=False)
             except DownloadError as error:
                 raise FetchFailed(classify_error(str(error)), str(error)) from error
-            captions = self._captions(ydl, info)
+            captions = self._captions(info)
             media_path = video_path = None
             if want_media == "always" or captions is None:
                 media_path = self._download(ydl, info, AUDIO_FORMAT)
