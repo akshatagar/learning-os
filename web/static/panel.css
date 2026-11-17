@@ -1,205 +1,204 @@
+/* Implements DESIGN.md: a black dashboard. The top bar and home page are
+   the shell; each section's own rules follow further down and take their
+   colours and faces from tokens.css. */
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html, body { min-height: 100%; }
 
 body {
   margin: 0;
   background: var(--ground);
   color: var(--line);
   font-family: var(--body);
-  font-variant-numeric: tabular-nums;
-  /* The window is the frame: the page itself never scrolls, and the surface
-     owns the only scrollbar there is. */
-  display: flex;
-  flex-direction: column;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* An engraved legend plate, not a page header. */
-.plate {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--step-3);
-  padding: var(--step-3) var(--step-4);
-  border-bottom: 1px solid var(--line-hairline);
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+
+.label {
   font-family: var(--legend);
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.18em;
-}
-.plate__state { color: var(--line-muted); text-align: right; }
-/* The name doubles as the way home, so it is a button that looks like the
-   engraved legend it was. */
-.plate__name {
-  font: inherit;
-  letter-spacing: inherit;
-  color: var(--line);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-.plate__name:hover,
-.plate__name:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
-
-/* The Inbox button sits on the plate: it belongs to the whole panel, not
-   to any one stage of the drawing. */
-.plate__controls {
-  display: flex;
-  align-items: center;
-  gap: var(--step-2);
-  margin-left: auto;
-}
-.inbox__open { display: inline-flex; align-items: center; gap: var(--step-1); }
-
-/* Every stored reel, newest first. Restyled in the design overhaul. */
-.inbox__list { list-style: none; margin: var(--step-3) 0 0; padding: 0; max-width: 65ch; }
-.inbox__reel { padding: var(--step-3) 0; border-bottom: 1px solid var(--line-hairline); }
-.inbox__reel .gate__legend { margin: 0 0 var(--step-1); }
-.inbox__note { margin: 0 0 var(--step-2); font-style: italic; }
-.inbox__summary { margin: 0 0 var(--step-2); }
-.inbox__footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--step-2) var(--step-3);
-  margin-top: var(--step-4);
-  padding-top: var(--step-3);
-  border-top: 1px solid var(--line-hairline);
-}
-.inbox__footer .gate__tally { margin: 0; }
-
-main {
-  padding: var(--step-4);
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-/* The drawing fills whatever the window leaves it, in both directions, and
-   keeps its proportions (the SVG default, xMidYMid meet). On a 1280x672
-   window that draws it at about 1.4x, so the 11px labels read at about 16. */
-#panel {
-  flex: 1 1 0;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-/* Holds the rail and the surface: a column until a stage opens on a wide
-   window, a row after. */
-.work { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; }
-body[data-surface="open"] .work { flex: 1 1 auto; }
-
-.stage__body {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 1.5;
-  /* fill: none means the interior is not a hit target under the SVG default
-     of visiblePainted, which leaves the middle of a stage dead to the click
-     that is supposed to open it. The node is a control; all of it responds. */
-  pointer-events: all;
-}
-/* Engraved, never floating: a cut line plus the light edge it catches. */
-.stage__highlight {
-  fill: none;
-  stroke: var(--engrave-highlight);
-  stroke-width: 1.5;
-  transform: translateY(1.5px);
-}
-.stage__label {
-  font-family: var(--legend);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  fill: var(--line-muted);
-}
-.stage__count {
-  font-family: var(--body);
   font-weight: 500;
-  font-size: 20px;
-  fill: var(--line);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--line-muted);
 }
+.label--signal { color: var(--lamp-holding); }
 
-/* The only circles in the system. */
-.stage__lamp { fill: none; stroke: var(--line-soft); stroke-width: 1; }
-.stage[data-lamp="holding"] .stage__lamp {
-  fill: var(--lamp-holding);
-  stroke: var(--lamp-holding);
+/* ---- top bar ---------------------------------------------------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: var(--step-4);
+  height: 54px; padding: 0 28px;
+  background: var(--ground);
+  border-bottom: 1px solid var(--line-hairline);
 }
-.stage[data-lamp="running"] .stage__lamp {
-  fill: var(--lamp-running);
-  stroke: var(--lamp-running);
-}
-
-.run--input { stroke-dasharray: 4 4; stroke: var(--line-soft); }
-
-/* Hover deepens the cut. It must not glow: only lamps carry light. */
-.stage { cursor: pointer; }
-.stage:hover .stage__body { stroke-width: 2.5; }
-.stage:focus-visible { outline: none; }
-.stage:focus-visible .stage__body { stroke-width: 2.5; }
-.stage:focus-visible .stage__label { fill: var(--line); }
-
-/* A sentence, not a legend, so it is not tracked caps. It carries no colour
-   of its own either: lamps are the only things on this panel that light. */
-.fault {
-  margin: 0 0 var(--step-3);
-  max-width: 65ch;
+.topbar__home {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-weight: 600; font-size: 16px; letter-spacing: -0.01em;
   color: var(--line);
 }
-
-/* A running stage moves. A ninety-second operation must read as a process
-   working, not as an interface that has hung. */
-@keyframes run-flow {
-  to { stroke-dashoffset: -16px; }
+.topbar__mark { width: 20px; height: 20px; color: var(--lamp-holding); }
+.topbar__nav { display: flex; align-items: center; gap: 22px; margin-left: auto; overflow-x: auto; }
+.topbar__nav button {
+  position: relative;
+  background: none; border: none; padding: 18px 0; cursor: pointer; white-space: nowrap;
+  font-family: var(--legend); font-weight: 500; font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--line-muted);
 }
+.topbar__nav button:hover { color: var(--line); }
+.topbar__nav button[aria-current="page"] { color: var(--line); }
+.topbar__nav button[aria-current="page"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--lamp-holding);
+}
+/* waiting on you: a red dot after the name */
+.topbar__nav button.is-waiting::before {
+  content: ""; position: absolute; right: -9px; top: 19px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--lamp-holding);
+}
+.topbar__count { color: var(--line-soft); margin-left: 4px; }
+
+main { padding: 20px 28px 32px; }
+
+.fault {
+  margin: 0 0 var(--step-3); padding: 10px 14px; max-width: 80ch;
+  border: 1px solid var(--lamp-holding); color: var(--line);
+}
+
+/* ---- panels ----------------------------------------------------------- */
+.panel {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line-hairline);
+  padding: 16px 20px 18px;
+  min-width: 0;
+}
+/* the red registration tick on two corners */
+.panel::before, .panel::after {
+  content: ""; position: absolute; width: 8px; height: 8px;
+  border-color: var(--lamp-holding); border-style: solid; opacity: 0.6;
+}
+.panel::before { left: -1px; top: -1px; border-width: 1px 0 0 1px; }
+.panel::after { right: -1px; bottom: -1px; border-width: 0 1px 1px 0; }
+.panel__head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--step-3);
+  padding-bottom: 11px; margin-bottom: 12px; border-bottom: 1px solid var(--line-hairline);
+}
+.panel__head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.panel__link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: var(--legend); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--lamp-holding);
+}
+
+/* ---- home ------------------------------------------------------------- */
+.home { display: grid; gap: var(--step-3); }
+body[data-surface="open"] .home { display: none; }
+.home__row { display: grid; gap: var(--step-3); grid-template-columns: 1fr 1.25fr 1fr; align-items: start; }
+
+.flow { padding-bottom: 12px; }
+#panel { display: block; width: 100%; height: auto; overflow: visible; }
+.flow__caption { font-family: var(--body); font-size: 11.5px; fill: var(--line-soft); }
+
+.stage { cursor: pointer; }
+.stage__body { fill: var(--surface-raised); stroke: var(--line-hairline); stroke-width: 1; pointer-events: all; }
+.stage:hover .stage__body, .stage:focus-visible .stage__body { stroke: var(--line-soft); }
+.stage:focus-visible { outline: none; }
+.stage:focus-visible .stage__body { stroke: var(--line); stroke-width: 1.5; }
+.stage__label { font-family: var(--legend); font-weight: 500; font-size: 10px; letter-spacing: 0.06em; fill: var(--line-muted); }
+.stage__count { font-family: var(--legend); font-weight: 500; font-size: 16px; fill: var(--line); }
+.stage__unit { font-family: var(--legend); font-size: 10.5px; fill: var(--line-soft); }
+.stage__lamp { fill: none; stroke: none; }
+.stage[data-lamp="holding"] .stage__body { stroke: var(--lamp-holding); }
+.stage[data-lamp="holding"] .stage__count { fill: var(--lamp-holding); }
+.stage[data-lamp="holding"] .stage__lamp { fill: var(--lamp-holding); }
 .stage[data-lamp="running"] .stage__body {
-  stroke-dasharray: 8 8;
-  animation: run-flow 900ms linear infinite;
+  stroke: var(--lamp-running); stroke-dasharray: 6 6; animation: run-flow 900ms linear infinite;
 }
-
+@keyframes run-flow { to { stroke-dashoffset: -12px; } }
 @media (prefers-reduced-motion: reduce) {
   .stage[data-lamp="running"] .stage__body { animation: none; }
 }
+.run--input { stroke-dasharray: 3 4; }
 
-/* Cut into the panel, not floating above it: no shadow, no rounded corner,
-   and the drawing stays on screen so you never lose your place in the run. */
-.surface {
-  margin-top: var(--step-4);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line-hairline);
-  padding: var(--step-3) 0 var(--step-4);
+.home__greeting { margin: 4px 0 4px; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.home__lede { margin: 0 0 14px; color: var(--line-muted); }
+.todo { display: grid; grid-template-columns: 1fr auto; gap: var(--step-3); align-items: center; padding: 11px 0; border-top: 1px solid var(--line-hairline); }
+.todo__what { font-size: 14px; }
+.todo__what small { display: block; color: var(--line-soft); font-size: 12px; margin-top: 2px; }
+.todo--clear .todo__what { color: var(--line-muted); }
+
+.coverage__goal { display: grid; grid-template-columns: minmax(110px, 160px) 1fr 52px; gap: 14px; align-items: center; padding: 8px 0; }
+.coverage__name { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coverage__bar { display: flex; height: 8px; background: rgba(237, 237, 234, 0.05); }
+.coverage__present { background: var(--line); }
+.coverage__weak { background: var(--slate); }
+.coverage__missing {
+  background: repeating-linear-gradient(135deg, rgba(255, 90, 60, 0.16) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px rgba(255, 90, 60, 0.5);
 }
-.surface__plate {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--step-3);
-  font-family: var(--legend);
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.18em;
+.coverage__num { text-align: right; font-family: var(--legend); font-size: 12px; color: var(--line-muted); white-space: nowrap; }
+.coverage__key { display: flex; gap: 18px; margin-top: 12px; }
+.coverage__key span { display: inline-flex; align-items: center; gap: 7px; }
+.coverage__key i { display: inline-block; width: 14px; height: 6px; }
+
+.latest__reel { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line-hairline); }
+.latest__reel:last-child { border-bottom: none; }
+.latest__when { text-align: center; }
+.latest__when b { display: block; font-size: 20px; color: var(--line); line-height: 1.1; }
+.latest__note { margin: 0 0 2px; color: var(--lamp-holding); font-size: 13px; }
+.latest__summary { margin: 0; color: var(--line-muted); font-size: 13px; line-height: 1.5; }
+.latest__summary--pending { color: var(--line-soft); font-style: italic; }
+
+/* ---- section page ----------------------------------------------------- */
+.page { max-width: 980px; }
+.page__head {
+  display: flex; align-items: baseline; gap: var(--step-3);
+  padding: 4px 0 14px; margin-bottom: var(--step-3); border-bottom: 1px solid var(--line-hairline);
 }
-.surface__close,
-.gate__button {
-  font-family: var(--legend);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  color: var(--line);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  padding: var(--step-1) var(--step-2);
-  cursor: pointer;
-}
-/* The border thickens and the padding gives back the same 1px, so hovering
-   deepens the cut without shifting anything around it. */
-.surface__close:hover,
-.gate__button:hover { border-width: 2px; padding: 3px 7px; }
+.page__head h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.page__head .surface__close { margin-left: auto; }
 .surface__empty { color: var(--line-muted); max-width: 65ch; }
+
+/* ---- buttons ---------------------------------------------------------- */
+.gate__button, .surface__close {
+  font-family: var(--legend); font-weight: 500; font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--line); background: none;
+  border: 1px solid rgba(237, 237, 234, 0.28); border-radius: 2px;
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+.gate__button:hover, .surface__close:hover { border-color: var(--line); }
+.gate__button:disabled { opacity: 0.45; cursor: default; }
+.gate__button--primary { background: var(--lamp-holding); border-color: var(--lamp-holding); color: #0a0a0b; }
+.gate__button--primary:hover { border-color: var(--lamp-holding); filter: brightness(1.08); }
+
+/* ---- inbox page ------------------------------------------------------- */
+.inbox__list { list-style: none; margin: 0; padding: 0; max-width: 72ch; }
+.inbox__reel { padding: var(--step-3) 0; border-bottom: 1px solid var(--line-hairline); }
+.inbox__reel .gate__legend { margin: 0 0 var(--step-1); }
+.inbox__note { margin: 0 0 var(--step-1); color: var(--lamp-holding); }
+.inbox__summary { margin: 0 0 var(--step-2); line-height: 1.55; }
+.inbox__footer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--step-2) var(--step-3);
+  margin-top: var(--step-4); padding-top: var(--step-3); border-top: 1px solid var(--line-hairline);
+}
+.inbox__footer .gate__tally { margin: 0; }
+
+@media (max-width: 900px) {
+  .home__row { grid-template-columns: 1fr; }
+  .topbar { gap: var(--step-3); padding: 0 16px; }
+  main { padding: 16px; }
+}
+
+/* ======================================================================
+   Section rules, unchanged in structure, restyled through the tokens.
+   ====================================================================== */
 
 /* The merge-queue gate. Nothing here carries colour: the confidence number
    is data, not a lamp, and the Unlit Rule holds inside the surface too. */
@@ -334,73 +333,6 @@ body[data-surface="open"] .work { flex: 1 1 auto; }
   color: var(--line-muted);
 }
 
-/* The narrow drawing is a second plant, not a reflow of the first. */
-#panel-narrow { display: none; width: 100%; height: auto; overflow: visible; }
-
-/* Opening a stage swaps the wide drawing for the vertical one as a rail, so
-   the surface sits beside it and nothing has to be scrolled to. The condition
-   is "is a surface open". The media query below is the other, independent
-   reason to show the vertical drawing, and it overrides these rules because
-   it comes after them. */
-body[data-surface="open"] #panel { display: none; }
-
-body[data-surface="open"] .work {
-  flex-direction: row;
-  gap: var(--step-4);
-}
-
-body[data-surface="open"] #panel-narrow {
-  display: block;
-  /* Fitted by height, not pinned to a width. A fixed width fixes the height
-     too, and a drawing taller than the window would put the page scrollbar
-     back - the one thing this layout exists to remove. */
-  height: 100%;
-  width: auto;
-  max-width: 320px;
-  flex: 0 0 auto;
-}
-
-body[data-surface="open"] .surface {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  margin-top: 0;
-  border-top: none;
-  border-bottom: none;
-  /* Still cut into the panel, now along a vertical line. */
-  border-left: 1px solid var(--line);
-  padding: 0 0 var(--step-4) var(--step-4);
-}
-
-@media (max-width: 720px) {
-  /* Redrawn as a vertical run, never reflowed into cards: a card stack loses
-     where in the process a thing is stuck, which is what this form exists
-     to show. */
-  /* The first stage's label sits above the drawing's top edge, so the top
-     keeps the full step or the label runs into the plate's rule. */
-  main { padding: var(--step-4) var(--step-3) var(--step-3); }
-  #panel { display: none; }
-  #panel-narrow { display: block; }
-  .work { flex: 1 1 auto; }
-
-  /* The rail is a wide-window behaviour. Below this width the vertical
-     drawing is the whole view and the surface goes underneath, as it always
-     has - so every open-state rule above is undone here. */
-  body[data-surface="open"] .work { flex-direction: column; gap: 0; }
-  body[data-surface="open"] #panel-narrow {
-    height: auto;
-    width: 100%;
-    max-width: none;
-  }
-  body[data-surface="open"] .surface {
-    overflow-y: visible;
-    margin-top: var(--step-4);
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line-hairline);
-    border-left: none;
-    padding: var(--step-3) 0 var(--step-4);
-  }
-}
 
 /* The skills gate. No colour: a familiar skill is a fact about the person,
    not a fault, so nothing here is lit or flagged. */

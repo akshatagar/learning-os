@@ -3,96 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>learning-os</title>
+<title>Learning OS</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="panel.css">
 </head>
 <body>
-<header class="plate">
-  <!-- The name is the way home: it closes whatever surface is open. -->
-  <button id="home" class="plate__name" type="button"
-          aria-label="LEARNING-OS, back to the whole panel">LEARNING-OS</button>
-  <!-- Reel Inbox: every stored reel, newest first. -->
-  <div class="plate__controls">
-    <button id="inbox-open" class="gate__button inbox__open" type="button"
-            data-surface="inbox" aria-label="Inbox">
-      INBOX <span id="inbox-count"></span>
-    </button>
-  </div>
-  <span class="plate__state" id="plant-state">READING PANEL</span>
+<header class="topbar">
+  <!-- The name is the way home from any section. -->
+  <button id="home" class="topbar__home" type="button"
+          aria-label="Learning OS, back to home">
+    <svg class="topbar__mark" viewBox="0 0 26 26" aria-hidden="true">
+      <circle cx="13" cy="13" r="10" fill="none" stroke="currentColor"/>
+      <path d="M13 1 L14.4 11.6 L25 13 L14.4 14.4 L13 25 L11.6 14.4 L1 13 L11.6 11.6 Z"
+            fill="currentColor"/>
+    </svg>
+    <span>Learning OS</span>
+  </button>
+  <!-- Every section, one click away. Same pages the flow nodes open. -->
+  <nav class="topbar__nav" aria-label="Sections">
+    <button type="button" data-surface="inbox" id="inbox-open">Inbox <span id="inbox-count" class="topbar__count"></span></button>
+    <button type="button" data-surface="ingest">Ingest</button>
+    <button type="button" data-surface="queue">Merge queue</button>
+    <button type="button" data-surface="concepts">Concepts</button>
+    <button type="button" data-surface="goals">Goals</button>
+    <button type="button" data-surface="ideas">Ideas</button>
+    <button type="button" data-surface="approval">Approval</button>
+    <button type="button" data-surface="scoring">Scoring</button>
+    <button type="button" data-surface="planning">Plans</button>
+    <button type="button" data-surface="skills">Skills</button>
+  </nav>
 </header>
 
 <main>
 <p class="fault" id="fault" hidden></p>
 
-<svg id="panel" viewBox="0 0 790 360" role="group"
-     aria-label="Pipeline mimic panel">
-  <!-- Two rows rather than one: an eight-stage single row is so wide that the
-       drawing could never be drawn larger than 1:1, which left 11px labels
-       and an empty lower window. Folded, it fits the window both ways. -->
-  <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
-    <path d="M150 73 H190"/>
-    <path d="M300 73 H340"/>
-    <path d="M450 73 H490"/>
-    <path d="M600 73 H695 V110"/>
-    <path d="M545 96 V160 H95 V190"/>
-    <path d="M150 233 H190"/>
-    <path d="M300 233 H340"/>
-    <path d="M450 233 H490"/>
-    <path d="M640 313 H395 V256" class="run--input"/>
-  </g>
+<div id="home-view" class="home">
+  <section class="panel flow" aria-labelledby="flow-title">
+    <div class="panel__head">
+      <h2 id="flow-title">How it flows</h2>
+      <span class="label">Click a stage to open it · <span class="label--signal">red is waiting on you</span></span>
+    </div>
+    <svg id="panel" viewBox="0 0 1160 130" role="group" aria-label="How Learning OS flows">
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 Z" fill="var(--line-soft)"/>
+        </marker>
+      </defs>
+      <g class="runs" fill="none" stroke="var(--line-soft)" stroke-width="1" marker-end="url(#arrow)">
+        <path d="M120 32 H148"/>
+        <path d="M268 32 H296"/>
+        <path d="M416 32 H444"/>
+        <path d="M564 32 H592"/>
+        <path d="M712 32 H740"/>
+        <path d="M652 56 V78"/>
+        <path d="M712 102 H740"/>
+        <path d="M860 102 H888"/>
+        <path d="M1008 102 H1036"/>
+        <path d="M948 56 V78" class="run--input"/>
+      </g>
+      <g class="stages">
+        <g class="stage" data-stage="inbox"      transform="translate(0,8)"></g>
+        <g class="stage" data-stage="ingest"     transform="translate(148,8)"></g>
+        <g class="stage" data-stage="resolution" transform="translate(296,8)"></g>
+        <g class="stage" data-stage="queue"      transform="translate(444,8)"></g>
+        <g class="stage" data-stage="concepts"   transform="translate(592,8)"></g>
+        <g class="stage" data-stage="goals"      transform="translate(740,8)"></g>
+        <g class="stage" data-stage="skills"     transform="translate(888,8)"></g>
+        <g class="stage" data-stage="ideas"      transform="translate(592,78)"></g>
+        <g class="stage" data-stage="approval"   transform="translate(740,78)"></g>
+        <g class="stage" data-stage="scoring"    transform="translate(888,78)"></g>
+        <g class="stage" data-stage="planning"   transform="translate(1036,78)"></g>
+      </g>
+      <text class="flow__caption" x="0" y="86">What you read and watch comes in,</text>
+      <text class="flow__caption" x="0" y="104">is resolved against what you already know,</text>
+      <text class="flow__caption" x="0" y="122">and becomes goals, ideas and plans.</text>
+    </svg>
+  </section>
 
-  <g class="stages">
-    <g class="stage" data-stage="ingest"     transform="translate(40,50)"></g>
-    <g class="stage" data-stage="resolution" transform="translate(190,50)"></g>
-    <g class="stage" data-stage="queue"      transform="translate(340,50)"></g>
-    <g class="stage" data-stage="concepts"   transform="translate(490,50)"></g>
-    <g class="stage" data-stage="goals"      transform="translate(640,130)"></g>
-    <g class="stage" data-stage="ideas"      transform="translate(40,210)"></g>
-    <g class="stage" data-stage="approval"   transform="translate(190,210)"></g>
-    <g class="stage" data-stage="scoring"    transform="translate(340,210)"></g>
-    <g class="stage" data-stage="planning"   transform="translate(490,210)"></g>
-    <g class="stage" data-stage="skills"     transform="translate(640,290)"></g>
-  </g>
-</svg>
+  <div class="home__row">
+    <section class="panel" id="needs" aria-live="polite"></section>
+    <section class="panel" id="coverage"></section>
+    <section class="panel" id="latest"></section>
+  </div>
+</div>
 
-<div class="work">
-<svg id="panel-narrow" viewBox="0 0 320 640" role="group"
-     aria-label="Pipeline mimic panel, vertical">
-  <g class="runs" fill="none" stroke="var(--line)" stroke-width="1.5">
-    <path d="M95 46 V62"/>
-    <path d="M95 128 V144"/>
-    <path d="M95 210 V226"/>
-    <path d="M95 292 V308"/>
-    <path d="M95 374 V390"/>
-    <path d="M95 456 V472"/>
-    <path d="M95 538 V554"/>
-    <path d="M150 269 H190"/>
-    <path d="M190 515 H150" class="run--input"/>
-  </g>
-  <g class="stages">
-    <g class="stage" data-stage="ingest"     transform="translate(40,0)"></g>
-    <g class="stage" data-stage="resolution" transform="translate(40,82)"></g>
-    <g class="stage" data-stage="queue"      transform="translate(40,164)"></g>
-    <g class="stage" data-stage="concepts"   transform="translate(40,246)"></g>
-    <g class="stage" data-stage="goals"      transform="translate(190,246)"></g>
-    <g class="stage" data-stage="ideas"      transform="translate(40,328)"></g>
-    <g class="stage" data-stage="approval"   transform="translate(40,410)"></g>
-    <g class="stage" data-stage="scoring"    transform="translate(40,492)"></g>
-    <g class="stage" data-stage="skills"     transform="translate(190,492)"></g>
-    <g class="stage" data-stage="planning"   transform="translate(40,574)"></g>
-  </g>
-</svg>
-
-<section id="surface" class="surface" hidden>
-  <header class="surface__plate">
-    <span id="surface-title">STAGE</span>
-    <span id="surface-count"></span>
-    <button id="surface-close" class="surface__close" type="button">CLOSE</button>
+<section id="surface" class="page" hidden>
+  <header class="page__head">
+    <h1 id="surface-title">Section</h1>
+    <span id="surface-count" class="label"></span>
+    <button id="surface-close" class="surface__close" type="button">Close</button>
   </header>
   <div id="surface-body"></div>
 </section>
-</div>
 </main>
 
 <script type="module" src="app.js"></script>

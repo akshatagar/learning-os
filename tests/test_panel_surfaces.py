@@ -5,7 +5,7 @@ import pytest
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 
-# Every stage in the drawing and the module that renders its surface. A slow
+# Every node in the flow chart and the module that renders its page. A slow
 # endpoint (/goals takes about a second) used to paint its rows under
 # whichever stage had been opened since, so each render must check that its
 # own stage is still the one open before it touches the shared body.
@@ -14,6 +14,7 @@ SURFACES = {
     "concepts": "renderConcepts",
     "goals": "renderGoals",
     "ideas": "renderIdeas",
+    "inbox": "renderInbox",
     "ingest": "renderIngest",
     "planning": "renderPlanning",
     "queue": "renderQueue",
@@ -58,23 +59,14 @@ def test_opening_a_stage_marks_it_and_clears_the_previous_rows():
     assert "showLoading()" in opening
 
 
-def test_the_inbox_render_drops_its_response_when_the_inbox_is_no_longer_open():
-    source = (STATIC / "inbox.js").read_text(encoding="utf-8")
-    start = source.index("export async function renderInbox(")
-    render = source[start:source.index("\n}\n", start)]
-    assert render.find('showing("inbox")') != -1
-    assert render.find('showing("inbox")') < render.find("body.replaceChildren(")
-
-
-def test_the_inbox_button_opens_the_shared_surface_not_a_drawing_stage():
+def test_the_name_in_the_top_bar_is_the_way_home():
     markup = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert 'id="inbox-open"' in markup and 'data-surface="inbox"' in markup
-    assert 'data-stage="inbox"' not in markup
-
-
-def test_the_name_on_the_plate_is_the_way_home():
-    markup = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert '<button id="home" class="plate__name"' in markup
+    assert '<button id="home" class="topbar__home"' in markup
     source = (STATIC / "app.js").read_text(encoding="utf-8")
-    home = source[source.index('getElementById("home")'):]
+    home = source[source.index('getElementById("home").addEventListener'):]
     assert "closeSurface()" in home[:200]
+
+
+def test_the_home_page_hides_while_a_section_is_open():
+    css = (STATIC / "panel.css").read_text(encoding="utf-8")
+    assert 'body[data-surface="open"] .home { display: none; }' in css

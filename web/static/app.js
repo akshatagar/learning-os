@@ -2,28 +2,70 @@ import { renderApproval } from "./approval.js";
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderGoals } from "./goals.js";
+import { renderCoverage, renderLatest, renderNeeds } from "./home.js";
 import { renderIdeas } from "./ideas.js";
 import { initInbox, renderInbox } from "./inbox.js";
 import { renderIngest, stopTicking } from "./ingest.js";
-import { renderPanel, summarize } from "./panel.js";
+import { renderPanel } from "./panel.js";
 import { renderPlanning } from "./planning.js";
 import { renderQueue } from "./queue.js";
 import { renderResolution } from "./resolution.js";
 import { renderScoring } from "./scoring.js";
 import { renderSkills } from "./skills.js";
 
-const plantState = document.getElementById("plant-state");
 const fault = document.getElementById("fault");
+const surface = document.getElementById("surface");
+const surfaceTitle = document.getElementById("surface-title");
+const surfaceBody = document.getElementById("surface-body");
+const surfaceCount = document.getElementById("surface-count");
+const navButtons = [...document.querySelectorAll(".topbar__nav [data-surface]")];
+let opener = null;
 
-async function refresh() {
-  const response = await fetch("/state");
-  const state = await response.json();
-  renderPanel(state);
-  plantState.textContent = summarize(state);
+const TITLES = {
+  inbox: "Inbox", ingest: "Ingest", resolution: "Resolution", queue: "Merge queue",
+  concepts: "Concepts", goals: "Goals", ideas: "Ideas", approval: "Approval",
+  scoring: "Scoring", planning: "Plans", skills: "Skills",
+};
+
+async function readInbox() {
+  try {
+    return await fetch("/inbox").then((response) => response.json());
+  } catch {
+    return null;
+  }
 }
 
-// The event says something moved; the detail is read back from the endpoint
-// that owns it. Same rule as the panel itself: one authority per fact.
+// One read of /state draws the flow and the nav dots; the Inbox node and the
+// home panels add their own endpoints.
+async function refresh() {
+  const [state, inbox] = await Promise.all([
+    fetch("/state").then((response) => response.json()),
+    readInbox(),
+  ]);
+  const inboxStage = {
+    id: "inbox", label: "Inbox",
+    count: inbox ? inbox.reels.length : 0,
+    lamp: inbox && inbox.worker && inbox.worker.running ? "running" : "unlit",
+  };
+  renderPanel({ stages: [inboxStage, ...state.stages] });
+
+  const holding = new Set(state.stages.filter((s) => s.lamp === "holding").map((s) => s.id));
+  for (const nav of navButtons) {
+    nav.classList.toggle("is-waiting", holding.has(nav.dataset.surface));
+  }
+
+  if (surface.hidden) {
+    renderNeeds(state, inbox, openById, processInbox);
+    renderLatest(inbox, openById);
+    renderCoverage(openById);
+  }
+}
+
+async function processInbox() {
+  await fetch("/inbox/process", { method: "POST" });
+  refresh();
+}
+
 async function showFault(jobId) {
   const response = await fetch(`/jobs/${jobId}`);
   const job = await response.json();
@@ -32,27 +74,7 @@ async function showFault(jobId) {
   fault.hidden = false;
 }
 
-// The surface opens below the drawing, with the plant still visible: you
-// never lose your place in the run to look at one stage.
-const surface = document.getElementById("surface");
-const surfaceTitle = document.getElementById("surface-title");
-const surfaceBody = document.getElementById("surface-body");
-const surfaceCount = document.getElementById("surface-count");
-let opener = null;
-
-// Unreachable as of 8d-3: every stage in the drawing now has a branch above.
-// Kept as a fault message rather than deleted, so that a stage added to the
-// SVG without a surface says so instead of swallowing the click.
-function showPlaceholder() {
-  surfaceCount.textContent = "";
-  const note = document.createElement("p");
-  note.className = "surface__empty";
-  note.textContent = "This stage has no work surface wired. That is a defect, "
-    + "not a stage that does nothing.";
-  surfaceBody.replaceChildren(note);
-}
-
-// Shown the moment a stage is opened, so the previous stage's rows never sit
+// Shown the moment a section opens, so the previous section's rows never sit
 // under the new title while the new request is in flight.
 function showLoading() {
   surfaceCount.textContent = "";
@@ -62,54 +84,54 @@ function showLoading() {
   surfaceBody.replaceChildren(note);
 }
 
-async function openStage(group) {
-  opener = group;
-  // Stages in the drawing carry data-stage; the inbox button on the plate,
-  // which is not a pipeline stage, carries data-surface.
-  const stage = group.dataset.stage || group.dataset.surface;
-  // The ingest clock belongs to the ingest surface only.
+function showPlaceholder() {
+  surfaceCount.textContent = "";
+  const note = document.createElement("p");
+  note.className = "surface__empty";
+  note.textContent = "This section has no page wired. That is a defect.";
+  surfaceBody.replaceChildren(note);
+}
+
+async function openStage(control) {
+  opener = control;
+  // Flow nodes carry data-stage, nav buttons data-surface; both open the same page.
+  const stage = control.dataset.stage || control.dataset.surface;
   stopTicking();
-  surfaceTitle.textContent = stage.toUpperCase();
+  surfaceTitle.textContent = TITLES[stage] || stage;
   // Read by showing() in dom.js: a render whose stage is no longer open drops
   // its response instead of painting it here.
   surface.dataset.stage = stage;
   showLoading();
   surface.hidden = false;
-  // Drives the whole layout swap in panel.css. Nothing else reads it.
   document.body.dataset.surface = "open";
-  if (stage === "queue") {
-    await renderQueue(refresh);
-  } else if (stage === "concepts") {
-    await renderConcepts();
-  } else if (stage === "ingest") {
-    await renderIngest(refresh);
-  } else if (stage === "skills") {
-    await renderSkills(refresh);
-  } else if (stage === "goals") {
-    await renderGoals(refresh);
-  } else if (stage === "approval") {
-    await renderApproval(refresh);
-  } else if (stage === "ideas") {
-    await renderIdeas(refresh);
-  } else if (stage === "scoring") {
-    await renderScoring(refresh);
-  } else if (stage === "planning") {
-    await renderPlanning(refresh);
-  } else if (stage === "resolution") {
-    await renderResolution();
-  } else if (stage === "inbox") {
-    await renderInbox();
-  } else {
-    showPlaceholder();
+  for (const nav of navButtons) {
+    if (nav.dataset.surface === stage) nav.setAttribute("aria-current", "page");
+    else nav.removeAttribute("aria-current");
   }
+  window.scrollTo(0, 0);
+  if (stage === "queue") await renderQueue(refresh);
+  else if (stage === "concepts") await renderConcepts();
+  else if (stage === "ingest") await renderIngest(refresh);
+  else if (stage === "skills") await renderSkills(refresh);
+  else if (stage === "goals") await renderGoals(refresh);
+  else if (stage === "approval") await renderApproval(refresh);
+  else if (stage === "ideas") await renderIdeas(refresh);
+  else if (stage === "scoring") await renderScoring(refresh);
+  else if (stage === "planning") await renderPlanning(refresh);
+  else if (stage === "resolution") await renderResolution();
+  else if (stage === "inbox") await renderInbox();
+  else showPlaceholder();
 }
 
-// Both drawings are covered; the hidden one simply cannot be reached.
-// The inbox opens in the same surface as the stages, from its plate button.
-const inboxButton = document.getElementById("inbox-open");
-inboxButton.addEventListener("click", () => openStage(inboxButton));
-initInbox();
+function openById(id) {
+  const control = navButtons.find((nav) => nav.dataset.surface === id)
+    || document.querySelector(`.stage[data-stage="${id}"]`);
+  if (control) openStage(control);
+}
 
+for (const nav of navButtons) {
+  nav.addEventListener("click", () => openStage(nav));
+}
 for (const group of document.querySelectorAll(".stage")) {
   group.addEventListener("click", () => openStage(group));
   group.addEventListener("keydown", (event) => {
@@ -121,29 +143,25 @@ for (const group of document.querySelectorAll(".stage")) {
 }
 
 function closeSurface() {
-  // A hidden surface must not keep a timer running behind it.
+  // A hidden page must not keep a timer running behind it.
   stopTicking();
   surface.hidden = true;
   delete document.body.dataset.surface;
-  // Focus goes back to the stage that was opened. Opened from the rail, that
-  // node is hidden now that the wide drawing is back, so the visible copy of
-  // the same stage takes it instead.
-  if (opener) {
-    const visible = [...document.querySelectorAll(
-      `.stage[data-stage="${opener.dataset.stage}"]`,
-    )].find((node) => node.getClientRects().length);
-    (visible || opener).focus();
-  }
+  for (const nav of navButtons) nav.removeAttribute("aria-current");
+  refresh();
+  // Focus returns to whatever opened the page, if it is on screen.
+  if (opener && opener.getClientRects().length) opener.focus();
+  else document.getElementById("home").focus();
 }
 
 document.getElementById("surface-close").addEventListener("click", closeSurface);
 
-// The name on the plate is the way back to the whole panel.
+// The name in the top bar is the way back home from any section.
 document.getElementById("home").addEventListener("click", () => {
   if (!surface.hidden) closeSurface();
 });
 
-// Escape closes the surface, the same as CLOSE.
+// Escape closes the page, the same as Close.
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !surface.hidden) {
     event.preventDefault();
@@ -151,42 +169,31 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Every event re-reads /state rather than patching the DOM from the payload.
-// One authority for what is on screen, and the panel is ten rows.
+initInbox();
+
+// Every event re-reads the endpoints rather than patching the DOM from the
+// payload: one authority for what is on screen.
 connectEvents((event) => {
   if (event.type === "job" && event.status === "failed") showFault(event.id);
   if (event.type === "job" && event.status === "running") fault.hidden = true;
-  // The run that just changed state is the one this surface is showing.
-  // An ingest writes adjudications as a side effect, so it has to reach the
-  // resolution surface too — that is the only way this surface ever changes.
-  if (event.type === "job" && event.kind === "ingest" && !surface.hidden
-      && opener) {
-    if (opener.dataset.stage === "ingest") renderIngest(refresh);
-    if (opener.dataset.stage === "resolution") renderResolution();
+  const open = surface.hidden ? null : surface.dataset.stage;
+  if (event.type === "job" && event.kind === "ingest") {
+    if (open === "ingest") renderIngest(refresh);
+    if (open === "resolution") renderResolution();
   }
-  // draft-requirements joins recommend here: both leave a goal's own row
-  // stale on the surface that is already open, and neither has anywhere
-  // else to be watched from.
   if (event.type === "job"
       && (event.kind === "recommend" || event.kind === "draft-requirements")
-      && !surface.hidden && opener && opener.dataset.stage === "goals") {
+      && open === "goals") {
     renderGoals(refresh);
   }
-  // A finished generation must land under the cursor of whichever of the two
-  // opportunity surfaces is open, without a reload.
-  if (event.type === "job" && event.kind === "generate-ideas" && !surface.hidden
-      && opener) {
-    if (opener.dataset.stage === "ideas") renderIdeas(refresh);
-    if (opener.dataset.stage === "approval") renderApproval(refresh);
+  if (event.type === "job" && event.kind === "generate-ideas") {
+    if (open === "ideas") renderIdeas(refresh);
+    if (open === "approval") renderApproval(refresh);
   }
-  // Scoring finishing moves a row out of planning's blocked list into its
-  // waiting list, so a scoring transition has to reach the planning surface
-  // too — not just the surface whose own job it was.
-  if (event.type === "job" && !surface.hidden && opener
-      && (event.kind === "score-opportunities"
-        || event.kind === "plan-opportunities")) {
-    if (opener.dataset.stage === "scoring") renderScoring(refresh);
-    if (opener.dataset.stage === "planning") renderPlanning(refresh);
+  if (event.type === "job"
+      && (event.kind === "score-opportunities" || event.kind === "plan-opportunities")) {
+    if (open === "scoring") renderScoring(refresh);
+    if (open === "planning") renderPlanning(refresh);
   }
   refresh();
 });
