@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,6 +44,8 @@ from skills.entry import (
 from storage.models import Goal, MergeQueue, Opportunity, Recommendation, Skill
 from web.jobs import JobRegistry
 from web.state import panel_state
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 15.0
@@ -124,6 +126,20 @@ def create_app(engine, collection, registry: JobRegistry | None = None,
     the panel's own routes. They are included before the static mount below,
     which would otherwise shadow them."""
     app = FastAPI(title="learning-os")
+
+    @app.middleware("http")
+    async def same_origin_writes(request, call_next):
+        """A page on another site can send this local server a POST from
+        the user's own browser. Browsers always attach Origin to such a
+        request, so a write whose Origin is not this host is refused.
+        Reads stay open: the browser itself keeps another origin from
+        reading the response."""
+        origin = request.headers.get("origin")
+        if request.method not in SAFE_METHODS and origin is not None:
+            expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+            if origin != expected:
+                return JSONResponse({"detail": "cross-site request refused"}, status_code=403)
+        return await call_next(request)
     app.state.engine = engine
     app.state.collection = collection
     app.state.registry = registry or JobRegistry(lambda: Session(engine))

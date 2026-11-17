@@ -1,4 +1,5 @@
 import uvicorn
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from storage.db import get_engine
 from storage.vectors import get_chroma_client, get_concepts_collection
@@ -21,6 +22,17 @@ def build_inbox():
     return make_router(sessions, worker=worker), worker
 
 
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+
+
+def protect(app):
+    """Answer only to local host names. A DNS-rebinding page reaches
+    127.0.0.1 under its own name, and that name is what the Host header
+    carries, so anything but these is refused before routing."""
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=LOCAL_HOSTS)
+    return app
+
+
 def build_app():
     """The one place the real stores are opened, shared by both entry points.
 
@@ -28,7 +40,7 @@ def build_app():
     captures, then process a capped batch."""
     collection = get_concepts_collection(get_chroma_client(CHROMA_PATH))
     router, worker = build_inbox()
-    app = create_app(get_engine(DB_PATH), collection, extra_routers=[router])
+    app = protect(create_app(get_engine(DB_PATH), collection, extra_routers=[router]))
     app.state.reel_worker = worker
     worker.start()
     return app

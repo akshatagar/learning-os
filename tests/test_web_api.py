@@ -1233,3 +1233,34 @@ def test_extra_routers_are_served_ahead_of_the_static_panel(engine, collection):
 
     assert client.get("/inbox").json() == {"ok": True}
     assert client.get("/").status_code == 200
+
+
+def test_a_cross_site_write_is_refused(engine, collection):
+    client = TestClient(create_app(engine, collection))
+
+    refused = client.post("/goals", json={"category": "x", "description": "y"},
+                          headers={"Origin": "https://evil.example"})
+    allowed_read = client.get("/health", headers={"Origin": "https://evil.example"})
+
+    assert refused.status_code == 403
+    assert allowed_read.status_code == 200
+
+
+def test_a_same_origin_write_goes_through(engine, collection):
+    client = TestClient(create_app(engine, collection), base_url="http://127.0.0.1:8765")
+
+    response = client.post("/jobs/unknown-kind", headers={"Origin": "http://127.0.0.1:8765"})
+
+    assert response.status_code != 403
+
+
+def test_the_served_app_answers_only_to_localhost_names(engine, collection):
+    """A DNS-rebinding page reaches 127.0.0.1 under its own host name; the
+    Host header is what gives it away."""
+    from web.serve import protect
+
+    rebound = TestClient(protect(create_app(engine, collection)), base_url="http://evil.example")
+    local = TestClient(protect(create_app(engine, collection)), base_url="http://127.0.0.1:8765")
+
+    assert rebound.get("/health").status_code == 400
+    assert local.get("/health").status_code == 200
