@@ -13,6 +13,16 @@ The Reel Inbox work runs in five gated phases on `feat/reel-inbox`, with one com
 - **The `worktree-conversational-orchestration` branch stays unmerged** and untouched by this work.
 - **`cli.py` stays untracked.** Its dead `seed-goals` command was removed so it imports again.
 
+## 2026-11-17 — The panel becomes a black dashboard with a flow chart
+
+The control-room mimic panel, with its sage ground, Archivo, and full-screen drawing, is replaced. The user found it hard on the eye and hard to navigate. They rejected two serif directions and a star-atlas metaphor, then chose a sleek dashboard. It takes its colours and finish from a star-atlas reference board, moved to a black ground.
+
+- **Navigation:** a top bar lists every section, and the Learning OS name returns home from anywhere.
+- **The flow stays:** a clickable "How it flows" chart heads the home page, because it explains how the system works. Red marks a stage waiting on you; mint marks running work.
+- **Type:** Geist with Geist Mono for labels and counts (user's option C, kept despite Geist being a common face).
+- **Section pages keep their markup** and restyle through the shared tokens, so their behaviour and tests are unchanged.
+- **Fonts load from Google Fonts for now.** They must be vendored before the offline Windows build (Phase 4).
+
 ## 2026-11-17 — Reel Inbox is storage plus a summary (Phase 3)
 
 The brief asked for referent extraction and a one-card review with Explore, Later and Drop, ranking, auto-archiving and work-mode triggers. All of that was built and then replaced at the user's direction. Reel Inbox is now storage plus a summary.
