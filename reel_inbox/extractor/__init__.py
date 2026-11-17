@@ -1,4 +1,4 @@
-"""extract(url) -> JSON describing what a reel points at.
+"""extract(url) -> JSON with a short summary of what a reel says.
 
 The Extractor protocol is the seam: the pipeline here is one implementation,
 and a different model (or a different service) can replace it without the
@@ -6,7 +6,7 @@ inbox noticing.
 """
 from typing import Protocol
 
-from reel_inbox.extractor.schema import FIELDS, REFERENT_TYPES
+from reel_inbox.extractor.schema import FIELDS
 
 
 class Extractor(Protocol):
@@ -14,4 +14,4 @@ class Extractor(Protocol):
         """Return a dict with exactly FIELDS, or raise ExtractionFailed."""
 
 
-__all__ = ["Extractor", "FIELDS", "REFERENT_TYPES"]
+__all__ = ["Extractor", "FIELDS"]

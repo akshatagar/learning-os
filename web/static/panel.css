@@ -28,6 +28,46 @@ body {
   letter-spacing: 0.18em;
 }
 .plate__state { color: var(--line-muted); text-align: right; }
+/* The name doubles as the way home, so it is a button that looks like the
+   engraved legend it was. */
+.plate__name {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--line);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.plate__name:hover,
+.plate__name:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
+
+/* The Inbox button sits on the plate: it belongs to the whole panel, not
+   to any one stage of the drawing. */
+.plate__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-left: auto;
+}
+.inbox__open { display: inline-flex; align-items: center; gap: var(--step-1); }
+
+/* Every stored reel, newest first. Restyled in the design overhaul. */
+.inbox__list { list-style: none; margin: var(--step-3) 0 0; padding: 0; max-width: 65ch; }
+.inbox__reel { padding: var(--step-3) 0; border-bottom: 1px solid var(--line-hairline); }
+.inbox__reel .gate__legend { margin: 0 0 var(--step-1); }
+.inbox__note { margin: 0 0 var(--step-2); font-style: italic; }
+.inbox__summary { margin: 0 0 var(--step-2); }
+.inbox__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-2) var(--step-3);
+  margin-top: var(--step-4);
+  padding-top: var(--step-3);
+  border-top: 1px solid var(--line-hairline);
+}
+.inbox__footer .gate__tally { margin: 0; }
 
 main {
   padding: var(--step-4);

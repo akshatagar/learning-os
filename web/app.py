@@ -118,7 +118,11 @@ class RevalidatedStaticFiles(StaticFiles):
         return response
 
 
-def create_app(engine, collection, registry: JobRegistry | None = None) -> FastAPI:
+def create_app(engine, collection, registry: JobRegistry | None = None,
+               extra_routers=()) -> FastAPI:
+    """extra_routers are self-contained features (Reel Inbox) mounted beside
+    the panel's own routes. They are included before the static mount below,
+    which would otherwise shadow them."""
     app = FastAPI(title="learning-os")
     app.state.engine = engine
     app.state.collection = collection
@@ -646,6 +650,9 @@ def create_app(engine, collection, registry: JobRegistry | None = None) -> FastA
                 registry.unsubscribe(stream)
 
         return StreamingResponse(publish(), media_type="text/event-stream")
+
+    for router in extra_routers:
+        app.include_router(router)
 
     # Mounted last on purpose. Mounting "/" before the API routes are declared
     # would shadow every one of them.

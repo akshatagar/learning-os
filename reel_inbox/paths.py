@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def data_dir() -> Path:
-    """Where Reel Inbox keeps models, caches and (later) its database.
+    r"""Where Reel Inbox keeps models, caches and (later) its database.
 
     %APPDATA%\LearningOS on Windows, never the install or repo directory.
     """

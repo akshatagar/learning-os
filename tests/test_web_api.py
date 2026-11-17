@@ -1218,3 +1218,18 @@ def test_the_panel_files_are_revalidated_on_every_load(engine, collection, path)
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-cache"
+
+
+def test_extra_routers_are_served_ahead_of_the_static_panel(engine, collection):
+    from fastapi import APIRouter
+
+    extra = APIRouter(prefix="/inbox")
+
+    @extra.get("")
+    def inbox() -> dict:
+        return {"ok": True}
+
+    client = TestClient(create_app(engine, collection, extra_routers=[extra]))
+
+    assert client.get("/inbox").json() == {"ok": True}
+    assert client.get("/").status_code == 200

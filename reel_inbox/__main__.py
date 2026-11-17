@@ -1,6 +1,7 @@
-"""python -m reel_inbox extract <url> | eval <file>"""
+"""python -m reel_inbox extract <url> | eval <file> | set-secret <name> | pull | process"""
 import argparse
 import csv
+import getpass
 import json
 import os
 import sys
@@ -9,32 +10,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from reel_inbox.eval import format_table, read_urls, run_eval, spreadsheet_safe
-from reel_inbox.extractor.fetch import YtDlpFetcher
-from reel_inbox.extractor.llm import OllamaReferent
-from reel_inbox.extractor.pipeline import ExtractionFailed, ReelExtractor
-from reel_inbox.extractor.transcribe import WhisperTranscriber
+from reel_inbox.extractor.build import build_extractor
+from reel_inbox.extractor.pipeline import ExtractionFailed
+from reel_inbox.keys import NAMES, set_secret
 from reel_inbox.paths import data_dir
-
-
-def build_extractor(ocr: bool, cookies_file: str | None) -> ReelExtractor:
-    """Settings come from the environment (see .env.example), flags win."""
-    browsers = [b.strip() for b in os.environ.get("REEL_COOKIE_BROWSERS", "firefox,chrome").split(",") if b.strip()]
-    ocr = ocr or os.environ.get("REEL_OCR", "0") == "1"
-    ocr_fn = None
-    if ocr:
-        from reel_inbox.extractor.frames import FrameOCR
-
-        ocr_fn = FrameOCR()
-    return ReelExtractor(
-        fetcher=YtDlpFetcher(browsers, cookies_file or os.environ.get("REEL_COOKIES_FILE") or None),
-        transcribe_fn=WhisperTranscriber(
-            model=os.environ.get("REEL_WHISPER_MODEL", "small"),
-            device=os.environ.get("REEL_WHISPER_DEVICE", "cpu"),
-            compute_type=os.environ.get("REEL_WHISPER_COMPUTE", "int8"),
-        ),
-        llm_fn=OllamaReferent(os.environ.get("REEL_LLM_MODEL", "qwen3:8b")),
-        ocr_fn=ocr_fn,
-    )
+from reel_inbox.runtime import configured_source, make_worker
+from reel_inbox.sources import import_captures
+from reel_inbox.store import make_store
 
 
 def main(argv=None) -> int:
@@ -42,7 +24,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m reel_inbox")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    one = sub.add_parser("extract", help="extract the referent of one reel")
+    one = sub.add_parser("extract", help="summarize one reel")
     one.add_argument("url")
 
     many = sub.add_parser("eval", help="run extract over a file of URLs and print a table")
@@ -54,7 +36,31 @@ def main(argv=None) -> int:
     for p in (one, many):
         p.add_argument("--ocr", action="store_true", help="also OCR a few frames")
         p.add_argument("--cookies", help="path to a cookies.txt (Netscape format)")
+
+    secret = sub.add_parser("set-secret", help="store a key in Windows Credential Manager")
+    secret.add_argument("name", choices=sorted(NAMES))
+    sub.add_parser("pull", help="copy waiting captures from the remote inbox")
+    sub.add_parser("process", help="pull, then process one capped batch of pending captures")
     args = parser.parse_args(argv)
+
+    if args.command == "set-secret":
+        # Prompted, never an argument: arguments land in shell history.
+        set_secret(args.name, getpass.getpass(f"{args.name}: ").strip())
+        print(f"stored {args.name} in Windows Credential Manager")
+        return 0
+    if args.command == "pull":
+        source = configured_source()
+        if source is None:
+            print("no inbox configured: run set-secret for supabase-url and supabase-key")
+            return 1
+        print(f"pulled {import_captures(make_store(), source)} new capture(s)")
+        return 0
+    if args.command == "process":
+        worker = make_worker()
+        worker.start()
+        worker.join()
+        print(json.dumps(worker.status(), indent=2))
+        return 0 if worker.status()["last_error"] is None else 1
 
     extractor = build_extractor(args.ocr, args.cookies)
 
@@ -75,7 +81,7 @@ def main(argv=None) -> int:
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
 
     def progress(row):
-        status = row["referent"] or row["failure_reason"]
+        status = (row["summary"] or "")[:60] or row["failure_reason"]
         print(f"[{progress.n}/{len(urls)}] {row['url']} -> {status}", file=sys.stderr, flush=True)
         progress.n += 1
     progress.n = 1

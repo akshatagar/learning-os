@@ -10,10 +10,28 @@ HOST = "127.0.0.1"
 PORT = 8765
 
 
+def build_inbox():
+    """Reel Inbox: its own store, its worker, and the /inbox router."""
+    from reel_inbox.runtime import make_worker
+    from reel_inbox.store import make_store
+    from reel_inbox.web import make_router
+
+    sessions = make_store()
+    worker = make_worker(sessions)
+    return make_router(sessions, worker=worker), worker
+
+
 def build_app():
-    """The one place the real stores are opened, shared by both entry points."""
+    """The one place the real stores are opened, shared by both entry points.
+
+    Starting the app starts one Reel Inbox run in the background: pull new
+    captures, then process a capped batch."""
     collection = get_concepts_collection(get_chroma_client(CHROMA_PATH))
-    return create_app(get_engine(DB_PATH), collection)
+    router, worker = build_inbox()
+    app = create_app(get_engine(DB_PATH), collection, extra_routers=[router])
+    app.state.reel_worker = worker
+    worker.start()
+    return app
 
 
 def main() -> None:

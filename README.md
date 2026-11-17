@@ -74,6 +74,7 @@ One Python package per stage, with no framework or service layer: functions take
 | `skills/` | Skills entry |
 | `opportunities/` | Idea generation, approval, feasibility scoring, planning |
 | `web/` | FastAPI app, job registry, pywebview shell |
+| `reel_inbox/` | Reel Inbox, self-contained: phone capture, referent extraction, one-card review. Its own SQLite store under `%APPDATA%\LearningOS`. See [its capture setup](reel_inbox/capture/README.md). |
 
 - **Loops are not graphs.** Anything that walks rows and commits per row is a plain loop; a node blocking on `input()` is hard to test and resume.
 - **Every model call is injectable** (`match_fn`, `generate_fn`, `plan_fn`, …), so the suite runs without a model apart from a few `@pytest.mark.live` tests.

@@ -56,3 +56,25 @@ def test_opening_a_stage_marks_it_and_clears_the_previous_rows():
 
     assert "surface.dataset.stage = stage" in opening
     assert "showLoading()" in opening
+
+
+def test_the_inbox_render_drops_its_response_when_the_inbox_is_no_longer_open():
+    source = (STATIC / "inbox.js").read_text(encoding="utf-8")
+    start = source.index("export async function renderInbox(")
+    render = source[start:source.index("\n}\n", start)]
+    assert render.find('showing("inbox")') != -1
+    assert render.find('showing("inbox")') < render.find("body.replaceChildren(")
+
+
+def test_the_inbox_button_opens_the_shared_surface_not_a_drawing_stage():
+    markup = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert 'id="inbox-open"' in markup and 'data-surface="inbox"' in markup
+    assert 'data-stage="inbox"' not in markup
+
+
+def test_the_name_on_the_plate_is_the_way_home():
+    markup = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert '<button id="home" class="plate__name"' in markup
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    home = source[source.index('getElementById("home")'):]
+    assert "closeSurface()" in home[:200]

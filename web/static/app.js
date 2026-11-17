@@ -3,6 +3,7 @@ import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderGoals } from "./goals.js";
 import { renderIdeas } from "./ideas.js";
+import { initInbox, renderInbox } from "./inbox.js";
 import { renderIngest, stopTicking } from "./ingest.js";
 import { renderPanel, summarize } from "./panel.js";
 import { renderPlanning } from "./planning.js";
@@ -63,7 +64,9 @@ function showLoading() {
 
 async function openStage(group) {
   opener = group;
-  const stage = group.dataset.stage;
+  // Stages in the drawing carry data-stage; the inbox button on the plate,
+  // which is not a pipeline stage, carries data-surface.
+  const stage = group.dataset.stage || group.dataset.surface;
   // The ingest clock belongs to the ingest surface only.
   stopTicking();
   surfaceTitle.textContent = stage.toUpperCase();
@@ -94,12 +97,19 @@ async function openStage(group) {
     await renderPlanning(refresh);
   } else if (stage === "resolution") {
     await renderResolution();
+  } else if (stage === "inbox") {
+    await renderInbox();
   } else {
     showPlaceholder();
   }
 }
 
 // Both drawings are covered; the hidden one simply cannot be reached.
+// The inbox opens in the same surface as the stages, from its plate button.
+const inboxButton = document.getElementById("inbox-open");
+inboxButton.addEventListener("click", () => openStage(inboxButton));
+initInbox();
+
 for (const group of document.querySelectorAll(".stage")) {
   group.addEventListener("click", () => openStage(group));
   group.addEventListener("keydown", (event) => {
@@ -127,6 +137,11 @@ function closeSurface() {
 }
 
 document.getElementById("surface-close").addEventListener("click", closeSurface);
+
+// The name on the plate is the way back to the whole panel.
+document.getElementById("home").addEventListener("click", () => {
+  if (!surface.hidden) closeSurface();
+});
 
 // Escape closes the surface, the same as CLOSE.
 document.addEventListener("keydown", (event) => {

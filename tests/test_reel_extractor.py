@@ -6,7 +6,7 @@ import pytest
 from reel_inbox.extractor.captions import vtt_to_text
 from reel_inbox.extractor.fetch import FetchFailed, FetchResult, choose_cookie_source, classify_error
 from reel_inbox.extractor.pipeline import ExtractionFailed, ReelExtractor
-from reel_inbox.extractor.schema import FIELDS, normalize
+from reel_inbox.extractor.schema import FIELDS, SUMMARY_LIMIT, normalize
 
 
 # --- captions -------------------------------------------------------------
@@ -37,37 +37,22 @@ def test_empty_captions_are_none():
 
 # --- schema ---------------------------------------------------------------
 
-def test_normalize_keeps_a_well_formed_answer():
-    raw = {
-        "referent": "Byte Latent Transformer",
-        "referent_type": "paper",
-        "search_query": "Byte Latent Transformer Meta arxiv",
-        "source_url_guess": "https://arxiv.org/abs/2412.09871",
-        "confidence": 0.9,
-        "why_explorable": "Tokenizer-free LLM architecture.",
-    }
+def test_normalize_keeps_a_well_formed_summary():
+    raw = {"summary": "Meta's Byte Latent Transformer drops the tokenizer."}
     assert normalize(raw) == raw
     assert list(normalize(raw)) == list(FIELDS)
 
 
-def test_normalize_repairs_what_the_model_gets_wrong():
-    out = normalize({
-        "referent": "  ",
-        "referent_type": "Paper ",
-        "search_query": "x",
-        "source_url_guess": "arxiv.org/abs/1",
-        "confidence": 1.7,
-        "why_explorable": "",
-    })
-    assert out["referent"] is None
-    assert out["referent_type"] == "paper"
-    assert out["source_url_guess"] is None
-    assert out["confidence"] == 1.0
-    assert out["why_explorable"] is None
+def test_normalize_collapses_whitespace_and_caps_length():
+    out = normalize({"summary": "  two\n\nlines  " + "x" * 2000})
+    assert out["summary"].startswith("two lines x")
+    assert len(out["summary"]) == SUMMARY_LIMIT
 
 
-def test_an_unknown_type_becomes_other():
-    assert normalize({"referent": "x", "referent_type": "podcast"})["referent_type"] == "other"
+def test_an_empty_or_malformed_summary_becomes_none():
+    assert normalize({"summary": "   "}) == {"summary": None}
+    assert normalize({"summary": 3}) == {"summary": None}
+    assert normalize({}) == {"summary": None}
 
 
 # --- fetch ----------------------------------------------------------------
@@ -118,14 +103,7 @@ def test_no_source_with_site_cookies_means_no_cookies():
 
 # --- pipeline -------------------------------------------------------------
 
-ANSWER = {
-    "referent": "Byte Latent Transformer",
-    "referent_type": "paper",
-    "search_query": "Byte Latent Transformer arxiv",
-    "source_url_guess": None,
-    "confidence": 0.8,
-    "why_explorable": "A tokenizer-free architecture.",
-}
+ANSWER = {"summary": "Meta's Byte Latent Transformer drops the tokenizer."}
 
 
 class FakeFetcher:
@@ -202,12 +180,12 @@ def test_no_evidence_is_a_failure_not_a_guess():
     assert "evidence" not in seen
 
 
-def test_a_null_referent_is_reported_as_no_referent():
+def test_an_empty_summary_is_reported_as_no_summary():
     fetcher = FakeFetcher(FetchResult(meta={"title": "vibes"}, captions="c", media_path=None))
-    extractor, _ = _extractor(fetcher, llm=lambda e: {**ANSWER, "referent": None})
+    extractor, _ = _extractor(fetcher, llm=lambda e: {"summary": ""})
     with pytest.raises(ExtractionFailed) as caught:
         extractor.extract("u")
-    assert caught.value.reason == "no_referent"
+    assert caught.value.reason == "no_summary"
 
 
 def test_a_model_error_is_reported_as_llm_error():
@@ -236,22 +214,6 @@ def test_cookies_are_never_chosen_for_an_unsupported_site():
 def test_a_youtu_be_link_uses_youtube_cookies():
     loaders = {"firefox": lambda: _jar(".youtube.com")}
     assert choose_cookie_source("https://youtu.be/abc", loaders) == "firefox"
-
-
-def test_a_source_link_not_in_the_evidence_is_dropped():
-    fetcher = FakeFetcher(FetchResult(meta={"description": "paper: https://arxiv.org/abs/1"},
-                                      captions="c", media_path=None))
-    invented = {**ANSWER, "source_url_guess": "https://evil.example/phish"}
-    extractor, _ = _extractor(fetcher, llm=lambda e: invented)
-    assert extractor.extract("u")["source_url_guess"] is None
-
-
-def test_a_source_link_quoted_in_the_evidence_is_kept():
-    fetcher = FakeFetcher(FetchResult(meta={"description": "paper: https://arxiv.org/abs/1"},
-                                      captions="c", media_path=None))
-    quoted = {**ANSWER, "source_url_guess": "https://arxiv.org/abs/1"}
-    extractor, _ = _extractor(fetcher, llm=lambda e: quoted)
-    assert extractor.extract("u")["source_url_guess"] == "https://arxiv.org/abs/1"
 
 
 def test_the_evidence_is_fenced_as_untrusted_data():

@@ -1,0 +1,253 @@
+"""Capture import, the processing queue and the reel list, on an in-memory store
+with a fake inbox source, a fake extractor and a fake clock."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import select
+
+from reel_inbox.extractor.pipeline import ExtractionFailed
+from reel_inbox.queue import process_pending
+from reel_inbox.sources import RemoteCapture, import_captures
+from reel_inbox import reels
+from reel_inbox.store import Capture, Extraction, make_store
+
+NOW = datetime(2026, 11, 15, 12, tzinfo=timezone.utc)
+
+ANSWER = {"summary": "Meta's Byte Latent Transformer drops the tokenizer."}
+
+
+@pytest.fixture
+def sessions():
+    return make_store("sqlite://")
+
+
+def _add(sessions, id_, url=None, status="pending", age_days=0, fail_reason=None, note=None):
+    with sessions() as s:
+        s.add(Capture(id=id_, url=url or f"https://www.instagram.com/reel/{id_}/",
+                      source="test", note=note, status=status, fail_reason=fail_reason,
+                      captured_at=NOW - timedelta(days=age_days)))
+        s.commit()
+
+
+def _ready(sessions, id_, age_days=0, note=None):
+    _add(sessions, id_, status="ready", age_days=age_days, note=note)
+    with sessions() as s:
+        s.add(Extraction(capture_id=id_, summary=f"summary of {id_}", model="fake",
+                         extracted_at=NOW))
+        s.commit()
+
+
+def _status(sessions, id_):
+    with sessions() as s:
+        c = s.get(Capture, id_)
+        return c.status, c.fail_reason
+
+
+# --- import ------------------------------------------------------------------
+
+class FakeSource:
+    name = "fake"
+
+    def __init__(self, rows):
+        self.rows, self.acked = rows, []
+
+    def pull(self):
+        return list(self.rows)
+
+    def ack(self, ids):
+        self.acked += ids
+
+
+def test_pulled_captures_land_pending_with_clean_urls_and_are_acked(sessions):
+    source = FakeSource([RemoteCapture("r1", "https://www.instagram.com/reel/X/?utm_source=a&srtk=b",
+                                       "the paper", NOW)])
+    assert import_captures(sessions, source) == 1
+    with sessions() as s:
+        c = s.get(Capture, "r1")
+        assert (c.url, c.note, c.status, c.source) == (
+            "https://www.instagram.com/reel/X/", "the paper", "pending", "fake")
+    assert source.acked == ["r1"]
+
+
+def test_a_capture_pulled_twice_is_stored_once(sessions):
+    row = RemoteCapture("r1", "https://youtu.be/a", None, NOW)
+    import_captures(sessions, FakeSource([row]))
+    assert import_captures(sessions, FakeSource([row])) == 0
+    with sessions() as s:
+        assert len(s.scalars(select(Capture)).all()) == 1
+
+
+# --- queue -------------------------------------------------------------------
+
+class FakeExtractor:
+    model = "fake-model"
+
+    def __init__(self, answers):
+        self.answers, self.seen = answers, []
+
+    def extract(self, url):
+        self.seen.append(url)
+        answer = self.answers[url]
+        if isinstance(answer, str):
+            raise ExtractionFailed(answer, answer)
+        return answer
+
+
+def _url(id_):
+    return f"https://www.instagram.com/reel/{id_}/"
+
+
+def test_a_run_is_capped_and_takes_the_oldest_first(sessions):
+    for i, age in enumerate([1, 5, 3]):
+        _add(sessions, f"c{i}", age_days=age)
+    extractor = FakeExtractor({_url(f"c{i}"): ANSWER for i in range(3)})
+    report = process_pending(sessions, extractor, limit=2, delay=(0, 0), sleep=lambda s: None)
+    assert extractor.seen == [_url("c1"), _url("c2")]
+    assert report.processed == 2
+    assert _status(sessions, "c0") == ("pending", None)
+    with sessions() as s:
+        e = s.get(Extraction, "c1")
+        assert (e.summary, e.model) == (ANSWER["summary"], "fake-model")
+    assert _status(sessions, "c1") == ("ready", None)
+
+
+def test_instagram_fetches_wait_a_random_delay_between_them(sessions):
+    _add(sessions, "a", age_days=2)
+    _add(sessions, "b", age_days=1)
+    _add(sessions, "y", url="https://youtube.com/shorts/y", age_days=0)
+    extractor = FakeExtractor({_url("a"): ANSWER, _url("b"): ANSWER,
+                               "https://youtube.com/shorts/y": ANSWER})
+    sleeps = []
+    process_pending(sessions, extractor, delay=(20, 90), sleep=sleeps.append,
+                    jitter=lambda lo, hi: 42)
+    assert sleeps == [42]
+
+
+def test_a_login_wall_stops_the_run_and_leaves_the_rest_pending(sessions):
+    for i in range(3):
+        _add(sessions, f"c{i}", age_days=3 - i)
+    extractor = FakeExtractor({_url("c0"): ANSWER, _url("c1"): "login_wall", _url("c2"): ANSWER})
+    report = process_pending(sessions, extractor, delay=(0, 0), sleep=lambda s: None)
+    assert report.stopped == "login_wall"
+    assert _status(sessions, "c1") == ("pending", None)
+    assert _status(sessions, "c2") == ("pending", None)
+
+
+def test_a_failure_is_retried_once_on_the_next_run_then_given_up(sessions):
+    _add(sessions, "c0")
+    broken = FakeExtractor({_url("c0"): "unavailable"})
+
+    process_pending(sessions, broken, delay=(0, 0), sleep=lambda s: None)
+    assert _status(sessions, "c0") == ("pending", "unavailable")
+
+    process_pending(sessions, broken, delay=(0, 0), sleep=lambda s: None)
+    assert _status(sessions, "c0") == ("failed", "unavailable")
+    assert broken.seen == [_url("c0"), _url("c0")]
+
+    process_pending(sessions, broken, delay=(0, 0), sleep=lambda s: None)
+    assert len(broken.seen) == 2  # failed items are never picked up again
+
+
+def test_a_retry_that_succeeds_clears_the_reason(sessions):
+    _add(sessions, "c0", fail_reason="llm_error")
+    process_pending(sessions, FakeExtractor({_url("c0"): ANSWER}), delay=(0, 0),
+                    sleep=lambda s: None)
+    assert _status(sessions, "c0") == ("ready", None)
+
+
+def test_a_stop_request_ends_the_run_between_items(sessions):
+    _add(sessions, "a", age_days=2)
+    _add(sessions, "b", age_days=1)
+    extractor = FakeExtractor({_url("a"): ANSWER, _url("b"): ANSWER})
+    report = process_pending(sessions, extractor, delay=(0, 0), sleep=lambda s: None,
+                             should_stop=lambda: len(extractor.seen) >= 1)
+    assert extractor.seen == [_url("a")]
+    assert report.stopped == "stop_requested"
+
+
+# --- reels -----------------------------------------------------------------------
+
+def test_the_list_holds_every_undropped_reel_newest_first(sessions):
+    _ready(sessions, "old", age_days=9, note="look at the benchmark")
+    _add(sessions, "waiting", age_days=1)
+    _add(sessions, "broken", status="failed", fail_reason="unavailable", age_days=3)
+    _add(sessions, "gone", status="dropped", age_days=0)
+    with sessions() as s:
+        listed = reels.list_reels(s)
+    assert [r["id"] for r in listed] == ["waiting", "broken", "old"]
+    old = listed[2]
+    assert (old["summary"], old["note"], old["status"]) == (
+        "summary of old", "look at the benchmark", "ready")
+    assert listed[0]["summary"] is None
+    assert listed[1]["fail_reason"] == "unavailable"
+
+
+def test_drop_hides_a_reel_but_keeps_it(sessions):
+    _ready(sessions, "a")
+    with sessions() as s:
+        reels.drop(s, "a")
+        assert reels.list_reels(s) == []
+        assert s.get(Capture, "a").status == "dropped"
+        assert reels.counts(s)["dropped"] == 1
+
+
+def test_dropping_an_unknown_reel_is_an_error(sessions):
+    with sessions() as s, pytest.raises(LookupError):
+        reels.drop(s, "nope")
+
+
+@pytest.mark.parametrize("url,safe", [
+    ("https://www.instagram.com/reel/a/", True),
+    ("http://youtu.be/x", True),
+    ("file:///C:/x.exe", False),
+    ("javascript:alert(1)", False),
+    ("ms-settings:", False),
+    ("https://", False),
+    (None, False),
+])
+def test_only_web_addresses_are_ever_opened(url, safe):
+    assert (reels.safe_web_url(url) is not None) is safe
+
+
+# --- worker --------------------------------------------------------------------
+
+def test_a_run_pulls_then_processes_and_only_one_runs_at_a_time(sessions):
+    import threading
+
+    from reel_inbox.worker import Worker
+
+    gate = threading.Event()
+
+    class SlowExtractor(FakeExtractor):
+        def extract(self, url):
+            gate.wait(5)
+            return super().extract(url)
+
+    source = FakeSource([RemoteCapture("r1", _url("r1"), None, NOW)])
+    worker = Worker(sessions, lambda: SlowExtractor({_url("r1"): ANSWER}), lambda: source,
+                    delay=(0, 0))
+    assert worker.start() is True
+    assert worker.start() is False  # still running
+    gate.set()
+    worker.join(5)
+    assert worker.status()["last_pulled"] == 1
+    assert worker.status()["last_report"]["processed"] == 1
+    assert _status(sessions, "r1") == ("ready", None)
+
+
+def test_an_unreachable_inbox_does_not_stop_processing(sessions):
+    from reel_inbox.worker import Worker
+
+    _add(sessions, "c0")
+
+    class Down:
+        name = "down"
+
+        def pull(self):
+            raise ConnectionError("offline")
+
+    worker = Worker(sessions, lambda: FakeExtractor({_url("c0"): ANSWER}), Down, delay=(0, 0))
+    worker.start()
+    worker.join(5)
+    assert "pull failed" in worker.status()["last_error"]
+    assert _status(sessions, "c0") == ("ready", None)

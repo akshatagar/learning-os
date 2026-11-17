@@ -7,7 +7,7 @@ from reel_inbox.extractor.schema import normalize
 
 class ExtractionFailed(Exception):
     """reason is a short code: login_wall, rate_limited, unavailable,
-    fetch_error, no_evidence, llm_error, no_referent."""
+    fetch_error, no_evidence, llm_error, no_summary."""
 
     def __init__(self, reason: str, detail: str = ""):
         super().__init__(f"{reason}: {detail}" if detail else reason)
@@ -23,6 +23,9 @@ class ReelExtractor:
         self.transcribe_fn = transcribe_fn
         self.llm_fn = llm_fn
         self.ocr_fn = ocr_fn
+        # Recorded on each extraction row, so results can be compared when
+        # the model changes.
+        self.model = getattr(llm_fn, "model", None)
         # Which evidence the last call had, for the eval report.
         self.last_evidence_sources: list[str] = []
 
@@ -69,10 +72,6 @@ class ReelExtractor:
             answer = normalize(self.llm_fn(evidence))
         except Exception as error:
             raise ExtractionFailed("llm_error", f"{type(error).__name__}: {error}") from error
-        # Only a link the reel itself shows survives. Anything else is the
-        # model's guess, and Explore would open it in the browser.
-        if answer["source_url_guess"] and answer["source_url_guess"] not in evidence:
-            answer["source_url_guess"] = None
-        if answer["referent"] is None:
-            raise ExtractionFailed("no_referent", answer.get("why_explorable") or "")
+        if answer["summary"] is None:
+            raise ExtractionFailed("no_summary", "the model found nothing to summarize")
         return answer

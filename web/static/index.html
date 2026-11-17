@@ -9,7 +9,16 @@
 </head>
 <body>
 <header class="plate">
-  <span class="plate__name">LEARNING-OS</span>
+  <!-- The name is the way home: it closes whatever surface is open. -->
+  <button id="home" class="plate__name" type="button"
+          aria-label="LEARNING-OS, back to the whole panel">LEARNING-OS</button>
+  <!-- Reel Inbox: every stored reel, newest first. -->
+  <div class="plate__controls">
+    <button id="inbox-open" class="gate__button inbox__open" type="button"
+            data-surface="inbox" aria-label="Inbox">
+      INBOX <span id="inbox-count"></span>
+    </button>
+  </div>
   <span class="plate__state" id="plant-state">READING PANEL</span>
 </header>
 

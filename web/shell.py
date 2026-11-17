@@ -134,9 +134,15 @@ def main() -> None:
 
     # Built before the window opens, which is where the startup pause lives:
     # sentence-transformers loads once here instead of per CLI invocation.
-    server = BackgroundServer(build_app())
+    app = build_app()
+    server = BackgroundServer(app)
     width, height = fit_to(work_area())
-    run(server, webview, width=width, height=height)
+    try:
+        run(server, webview, width=width, height=height)
+    finally:
+        # A Reel Inbox run may be mid-pause between Instagram fetches; ask it
+        # to stop rather than leave a fetch half done as the process exits.
+        app.state.reel_worker.stop()
 
 
 if __name__ == "__main__":

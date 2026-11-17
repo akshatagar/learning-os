@@ -4,11 +4,7 @@ import pytest
 from reel_inbox.eval import format_table, read_urls, run_eval
 from reel_inbox.extractor.pipeline import ExtractionFailed
 
-FOUND = {
-    "referent": "Byte Latent Transformer", "referent_type": "paper",
-    "search_query": "q", "source_url_guess": None, "confidence": 0.8,
-    "why_explorable": "w",
-}
+FOUND = {"summary": "Meta's Byte Latent Transformer drops the tokenizer."}
 
 
 class Script:
@@ -50,18 +46,20 @@ def test_a_login_wall_stops_the_run_and_leaves_the_rest_unfetched():
     assert [r["failure_reason"] for r in rows] == [None, "login_wall", "not_run_after_stop"]
 
 
-def test_the_table_reports_the_referent_found_rate():
+def test_the_table_reports_the_summarized_rate_and_trims_long_summaries():
     rows = [
-        {"url": "u1", "referent": "BLT", "confidence": 0.8, "failure_reason": None},
-        {"url": "u2", "referent": None, "confidence": None, "failure_reason": "no_referent"},
+        {"url": "u1", "summary": "Short one.", "failure_reason": None},
+        {"url": "u2", "summary": None, "failure_reason": "no_summary"},
+        {"url": "u3", "summary": "word " * 40, "failure_reason": None},
     ]
     table = format_table(rows)
-    assert "| u1 | BLT | 0.80 |  |" in table
-    assert "| u2 |  |  | no_referent |" in table
+    assert "| u1 | Short one. |  |" in table
+    assert "| u2 |  | no_summary |" in table
+    assert "…" in table.splitlines()[4]
     # Every captured reel is assumed worth acting on: nothing to label.
     assert "label" not in table
-    assert "referent found: 1/2 (50%)" in table
-    assert "no_referent: 1" in table
+    assert "summarized: 2/3 (67%)" in table
+    assert "no_summary: 1" in table
 
 
 def test_instagram_links_lose_their_tracking_parameters():

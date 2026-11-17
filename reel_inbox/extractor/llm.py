@@ -1,30 +1,19 @@
 import json
 
-from reel_inbox.extractor.schema import JSON_SCHEMA, REFERENT_TYPES
+from reel_inbox.extractor.schema import JSON_SCHEMA
 
 # Angle brackets in untrusted text become look-alikes, so no tag - nested,
 # split or otherwise - can close the evidence fence early.
 _BRACKETS = str.maketrans({"<": "‹", ">": "›"})
 
-SYSTEM = f"""You read the evidence gathered from one short educational video \
-(an Instagram Reel or YouTube Short) and name the specific thing it points at.
+SYSTEM = """You read the evidence gathered from one short educational video \
+(an Instagram Reel or YouTube Short) and summarize it for the person who \
+saved it, so they can recall it later without rewatching.
 
-Most of these videos are aggregators: they summarize a paper, a tool, a repo, \
-a technique, a claim or a person that exists elsewhere. The viewer has already \
-watched the video. Do NOT summarize the video. Identify the referent and give \
-the viewer a ready-made next step to find the original.
-
-Fields:
-- referent: the short canonical name of the thing, as you would type it into \
-a search box (for example "Byte Latent Transformer" or "uv (Python package \
-manager)"), not a sentence. null if the video points at nothing specific.
-- referent_type: one of {", ".join(REFERENT_TYPES)}.
-- search_query: the query most likely to find the primary source (the paper, \
-the repo, the official page), not commentary about it.
-- source_url_guess: a URL only if it appears verbatim in the evidence; \
-otherwise null. Never invent one.
-- confidence: 0 to 1, how sure you are that the referent is right.
-- why_explorable: one line on why it is worth following up.
+summary: two or three plain sentences on what the video says. Name the \
+specific things it mentions (papers, tools, repos, techniques, people) \
+exactly as they appear. No preamble such as "This video", no opinions, no \
+hashtags. If the evidence holds nothing of substance, return an empty string.
 
 Evidence can be noisy speech-to-text or OCR. Prefer names that appear in the \
 caption or on screen over names you infer.
@@ -54,7 +43,7 @@ def build_evidence(meta: dict, spoken: str | None, on_screen: str | None,
     return f"<evidence>\n{body}\n</evidence>"
 
 
-class OllamaReferent:
+class OllamaSummary:
     def __init__(self, model: str = "qwen3:8b"):
         self.model = model
 

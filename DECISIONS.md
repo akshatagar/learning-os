@@ -13,6 +13,18 @@ The Reel Inbox work runs in five gated phases on `feat/reel-inbox`, with one com
 - **The `worktree-conversational-orchestration` branch stays unmerged** and untouched by this work.
 - **`cli.py` stays untracked.** Its dead `seed-goals` command was removed so it imports again.
 
+## 2026-11-17 — Reel Inbox is storage plus a summary (Phase 3)
+
+The brief asked for referent extraction and a one-card review with Explore, Later and Drop, ranking, auto-archiving and work-mode triggers. All of that was built and then replaced at the user's direction. Reel Inbox is now storage plus a summary.
+
+- **Processing writes a summary, not a referent.** Each reel gets two or three plain sentences on what it says, naming the specific things it mentions. This reverses the brief's "do not summarize". The `extract(url)` seam now returns `{summary}`, and an empty summary is a `no_summary` failure.
+- **The Inbox is a list.** Every reel that has not been dropped, newest first, with your note and its summary. Pending and failed reels are listed too, with their state, so nothing captured is invisible. Each has Open reel (default browser, http(s) only) and Drop. Dropped reels stay in the store.
+- **Removed:** Explore, Later, the learned note, ranking, the three-showing auto-archive, the `surfacings` table, work mode, break, the surfacing-moment setting, the context re-rank, and the Explore → learning-os hook (it was triggered by Explore). Phase 5's explore-rate stats lose their subject; what to measure instead is open.
+- **Own store, own file.** `%APPDATA%\LearningOSeel_inbox.db` holds `captures` and `extractions`, created with `create_all` and not with learning-os's Alembic chain, so the package lifts out unchanged. It is the source of truth; Supabase is only a mailbox that rows are deleted from once stored locally.
+- **One retry without an extra column.** A first failure is recorded as `status=pending` plus a `fail_reason`. The next run tries it once more, and a second failure moves it to `failed`.
+- **Keys.** The phone uses the publishable key, which RLS limits to inserting an Instagram or YouTube link. The laptop uses the secret key, stored in Windows Credential Manager through `keyring`. `CaptureSource` (`pull`, `ack`) is the seam a Telegram bot would replace.
+- **The LEARNING-OS name on the plate is the way home:** it closes whatever surface is open.
+
 ## 2026-11-14 — Every captured reel is assumed actionable; no labelling
 
 Only reels worth following up get captured in the first place, so neither the eval nor the app checks whether a reel deserves action. The extractor's job is to turn each reel into a referent and a next step. The eval reports only the referent-found rate and failure reasons: the label column is gone, and no grounding or search checks were added. On the first eval (9 Instagram reels, no cookies) 9 of 9 produced a referent after one retry of an Ollama out-of-memory error, so Phase 3 is a go.

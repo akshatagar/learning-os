@@ -1,4 +1,4 @@
-"""Run the extractor over a list of URLs and report the referent-found rate.
+"""Run the extractor over a list of URLs and report the summarized rate.
 
 Instagram access stays low and slow: a randomized pause before every
 Instagram fetch after the first, and the run stops at the first rate-limit or
@@ -14,6 +14,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from reel_inbox.extractor.pipeline import ExtractionFailed
 
 STOP_REASONS = ("rate_limited", "login_wall")
+# Summaries are cut to this in the printed table; the CSV keeps them whole.
+TABLE_SUMMARY = 80
 NOT_RUN = "not_run_after_stop"
 
 
@@ -67,12 +69,7 @@ def _row(url, answer=None, reason=None, detail="", sources=()):
     answer = answer or {}
     return {
         "url": url,
-        "referent": answer.get("referent"),
-        "referent_type": answer.get("referent_type"),
-        "search_query": answer.get("search_query"),
-        "source_url_guess": answer.get("source_url_guess"),
-        "confidence": answer.get("confidence"),
-        "why_explorable": answer.get("why_explorable"),
+        "summary": answer.get("summary"),
         "failure_reason": reason,
         "detail": detail,
         "evidence": ", ".join(sources),
@@ -105,19 +102,18 @@ def run_eval(extractor, urls, delay=(20, 90), sleep=time.sleep,
 
 def format_table(rows) -> str:
     lines = [
-        "| url | referent | confidence | failure reason |",
-        "|---|---|---|---|",
+        "| url | summary | failure reason |",
+        "|---|---|---|",
     ]
     for row in rows:
-        confidence = "" if row["confidence"] is None else f"{row['confidence']:.2f}"
-        lines.append(
-            f"| {row['url']} | {row['referent'] or ''} | {confidence} "
-            f"| {row['failure_reason'] or ''} |"
-        )
+        summary = row["summary"] or ""
+        if len(summary) > TABLE_SUMMARY:
+            summary = summary[:TABLE_SUMMARY - 1].rstrip() + "…"
+        lines.append(f"| {row['url']} | {summary} | {row['failure_reason'] or ''} |")
     attempted = [r for r in rows if r["failure_reason"] != NOT_RUN]
-    found = sum(1 for r in attempted if r["referent"])
+    found = sum(1 for r in attempted if r["summary"])
     rate = f"{found / len(attempted):.0%}" if attempted else "n/a"
-    lines += ["", f"referent found: {found}/{len(attempted)} ({rate})"]
+    lines += ["", f"summarized: {found}/{len(attempted)} ({rate})"]
     not_run = len(rows) - len(attempted)
     if not_run:
         lines.append(f"not run after a stop: {not_run}")
