@@ -104,10 +104,25 @@ class FakeGui:
         self.calls.append("create_window")
         self.windows.append({"title": title, "url": url, **kwargs})
 
-    def start(self):
+    def start(self, **kwargs):
         self.calls.append("gui_start")
+        self.start_kwargs = kwargs
         if self._on_start:
             self._on_start()
+
+
+def test_the_window_carries_the_app_icon_when_one_is_given():
+    server, gui = FakeServer(), FakeGui()
+
+    run(server, gui, icon="learning-os.ico")
+
+    assert gui.start_kwargs == {"icon": "learning-os.ico"}
+
+
+def test_the_icon_file_ships_with_the_repo():
+    from web.shell import ICON
+
+    assert ICON.is_file() and ICON.suffix == ".ico"
 
 
 def test_the_window_opens_on_the_server_url():

@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 import uvicorn
 
@@ -7,7 +8,14 @@ from web.serve import HOST, PORT, build_app
 
 READY_POLL_SECONDS = 0.05
 
-TITLE = "learning-os"
+TITLE = "Learning OS"
+
+# The taskbar and window icon (desktop/make_icon.py draws it).
+ICON = Path(__file__).resolve().parent.parent / "desktop" / "learning-os.ico"
+
+# Its own taskbar identity, so the window shows the Learning OS icon rather
+# than grouping under python.exe with every other Python window.
+APP_ID = "LearningOS.Desktop"
 WIDTH = 1280
 HEIGHT = 820
 
@@ -19,7 +27,7 @@ MIN_SIZE = (960, 640)
 # --ground from web/static/tokens.css. Duplicated here because the window
 # frame is painted before any stylesheet loads, and pywebview's default is
 # white: without this every launch flashes white against the panel's ground.
-BACKGROUND = "#d7dcd3"
+BACKGROUND = "#0a0a0b"
 
 
 def work_area() -> tuple[int, int] | None:
@@ -108,7 +116,8 @@ class BackgroundServer:
 
 
 def run(server, gui, title: str = TITLE, width: int = WIDTH,
-        height: int = HEIGHT, min_size: tuple[int, int] = MIN_SIZE) -> None:
+        height: int = HEIGHT, min_size: tuple[int, int] = MIN_SIZE,
+        icon: str | None = None) -> None:
     """Bind the server's life to the window's.
 
     Both are arguments rather than globals so this can be tested without
@@ -122,7 +131,10 @@ def run(server, gui, title: str = TITLE, width: int = WIDTH,
     )
     try:
         # Blocks on the main thread until the window closes.
-        gui.start()
+        if icon:
+            gui.start(icon=icon)
+        else:
+            gui.start()
     finally:
         server.stop()
 
@@ -134,11 +146,19 @@ def main() -> None:
 
     # Built before the window opens, which is where the startup pause lives:
     # sentence-transformers loads once here instead of per CLI invocation.
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except (AttributeError, OSError):
+        pass  # not Windows: the default identity is fine
+
     app = build_app()
     server = BackgroundServer(app)
     width, height = fit_to(work_area())
     try:
-        run(server, webview, width=width, height=height)
+        run(server, webview, width=width, height=height,
+            icon=str(ICON) if ICON.is_file() else None)
     finally:
         # A Reel Inbox run may be mid-pause between Instagram fetches; ask it
         # to stop rather than leave a fetch half done as the process exits.

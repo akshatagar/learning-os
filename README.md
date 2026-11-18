@@ -45,7 +45,17 @@ uv run python -m web.shell    # desktop app
 uv run python -m web.serve    # same panel in a browser at http://127.0.0.1:8765/
 ```
 
-The panel shows every pipeline stage with its count, lit amber only where something is waiting on you. From it you can manage goals (create, draft requirements with the local model, edit, delete), generate ideas, and work through the merge queue. Both entry points bind to `127.0.0.1` only. On Windows 10 you need the Edge WebView2 runtime; Windows 11 has it.
+### Taskbar icon
+
+To open the app from the taskbar with no terminal:
+
+```bash
+powershell -ExecutionPolicy Bypass -File desktop\make_shortcut.ps1
+```
+
+This writes `Learning OS.lnk` to the project folder and the Start menu. Right-click either one and choose **Pin to taskbar**; Windows doesn't let scripts pin. To open the app at login, put a shortcut to `desktop\start_learning_os.vbs` in the Startup folder (Win+R, `shell:startup`). Run `make_shortcut.ps1` again if the project folder moves.
+
+The home page shows how the pipeline flows, with each stage's count, and marks in red whatever is waiting on you. From it you can manage goals (create, draft requirements with the local model, edit, delete), generate ideas, and work through the merge queue. Both entry points bind to `127.0.0.1` only. On Windows 10 you need the Edge WebView2 runtime; Windows 11 has it.
 
 Every stage, ingestion included, has a panel surface. `cli.py` is intentionally untracked, so a fresh clone has no command-line entry point; for scripted use, call the importable modules directly, for example:
 
