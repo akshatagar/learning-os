@@ -2,8 +2,6 @@ import uvicorn
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from storage.db import get_engine
-from storage.vectors import get_chroma_client, get_concepts_collection
-from web.app import create_app
 
 DB_PATH = "data/learning_os.db"
 CHROMA_PATH = "data/chroma"
@@ -37,7 +35,14 @@ def build_app():
     """The one place the real stores are opened, shared by both entry points.
 
     Starting the app starts one Reel Inbox run in the background: pull new
-    captures, then process a capped batch."""
+    captures, then process a capped batch.
+
+    The app and the vector store are imported here, not at module level, so
+    the desktop shell can open its window before they load (seconds: the
+    embedding model comes in with the vector store)."""
+    from storage.vectors import get_chroma_client, get_concepts_collection
+    from web.app import create_app
+
     collection = get_concepts_collection(get_chroma_client(CHROMA_PATH))
     router, worker = build_inbox()
     app = protect(create_app(get_engine(DB_PATH), collection, extra_routers=[router]))

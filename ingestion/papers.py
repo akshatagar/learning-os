@@ -9,8 +9,6 @@ from urllib.parse import urlparse
 
 import httpx
 import ollama
-from docling.datamodel.base_models import DocumentStream
-from docling.document_converter import DocumentConverter
 from langgraph.graph import END, START, StateGraph
 
 from resolution.adjudicate import call_ollama_adjudicate, resolve_candidate
@@ -48,7 +46,15 @@ def fetch_source(state: IngestState) -> dict:
     return {"pdf_bytes": Path(source).read_bytes()}
 
 
-def parse_docling(state: IngestState, converter_factory=DocumentConverter) -> dict:
+def parse_docling(state: IngestState, converter_factory=None) -> dict:
+    # Docling (and the PyTorch stack under it) takes about 19 seconds to
+    # import, so it loads here, when a paper is actually parsed, instead of
+    # every time the app starts.
+    from docling.datamodel.base_models import DocumentStream
+
+    if converter_factory is None:
+        from docling.document_converter import DocumentConverter as converter_factory
+
     stream = DocumentStream(name="source.pdf", stream=io.BytesIO(state["pdf_bytes"]))
     converter = converter_factory()
     result = converter.convert(stream)

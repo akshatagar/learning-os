@@ -115,28 +115,76 @@ class BackgroundServer:
         self._thread.join(timeout)
 
 
-def run(server, gui, title: str = TITLE, width: int = WIDTH,
+_MARK = (
+    '<svg viewBox="0 0 32 32" width="56" height="56" aria-hidden="true">'
+    '<circle cx="7" cy="7" r="3" fill="none" stroke="#ededea" stroke-width="2.4"/>'
+    '<circle cx="7" cy="25" r="3" fill="none" stroke="#ededea" stroke-width="2.4"/>'
+    '<path d="M10 8.5 C15 11 16 14 19 16 M10 23.5 C15 21 16 18 19 16" fill="none" '
+    'stroke="#ededea" stroke-width="2.4"/>'
+    '<circle cx="23.5" cy="16" r="4.5" fill="#ff5a3c"/></svg>'
+)
+
+
+def _page(message: str, detail: str = "") -> str:
+    """The screen shown while the server starts, or why it could not."""
+    from html import escape
+
+    extra = f'<p class="detail">{escape(detail)}</p>' if detail else ""
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'><style>"
+        f"html,body{{height:100%;margin:0;background:{BACKGROUND};color:#ededea;"
+        "font-family:'Segoe UI',sans-serif}"
+        "main{height:100%;display:grid;place-content:center;justify-items:center;gap:18px}"
+        "p{margin:0;font-size:15px;letter-spacing:.02em}"
+        ".detail{max-width:60ch;color:rgba(237,237,234,.66);font-size:13px;text-align:center}"
+        "</style></head><body><main>"
+        f"{_MARK}<p>{escape(message)}</p>{extra}</main></body></html>"
+    )
+
+
+LOADING_HTML = _page("Starting Learning OS…")
+
+
+def run(make_server, gui, title: str = TITLE, width: int = WIDTH,
         height: int = HEIGHT, min_size: tuple[int, int] = MIN_SIZE,
         icon: str | None = None) -> None:
-    """Bind the server's life to the window's.
+    """Open the window at once, then bring the server up behind it.
 
-    Both are arguments rather than globals so this can be tested without
-    opening a window - the one thing a test cannot do.
+    The window appears on a loading screen the moment this is called, so a
+    click on the taskbar answers immediately; the server (imports, database,
+    embedding model) is built on pywebview's worker thread and the window
+    switches to it once it is listening. Closing the window stops the server.
+
+    make_server and gui are arguments so this can be tested without opening
+    a window - the one thing a test cannot do.
     """
-    server.start()
-    server.wait_until_ready()
-    gui.create_window(
-        title, server.url, width=width, height=height,
-        background_color=BACKGROUND, min_size=min_size,
+    window = gui.create_window(
+        title, html=LOADING_HTML, width=width, height=height,
+        background_color=BACKGROUND, min_size=min_size, maximized=True,
     )
+    started = []
+
+    def boot():
+        try:
+            server = make_server()
+            started.append(server)
+            server.start()
+            server.wait_until_ready()
+        except Exception as error:  # with no console, the window is the only place to say so
+            window.load_html(_page("Learning OS could not start.", f"{type(error).__name__}: {error}"))
+            return
+        window.load_url(server.url)
+
     try:
-        # Blocks on the main thread until the window closes.
+        # Blocks on the main thread until the window closes; boot runs once
+        # the window exists.
         if icon:
-            gui.start(icon=icon)
+            gui.start(func=boot, icon=icon)
         else:
-            gui.start()
+            gui.start(func=boot)
     finally:
-        server.stop()
+        for server in started:
+            server.stop()
 
 
 def main() -> None:
@@ -144,8 +192,6 @@ def main() -> None:
     # GUI toolkit to test wiring that is injected anyway.
     import webview
 
-    # Built before the window opens, which is where the startup pause lives:
-    # sentence-transformers loads once here instead of per CLI invocation.
     try:
         import ctypes
 
@@ -153,16 +199,24 @@ def main() -> None:
     except (AttributeError, OSError):
         pass  # not Windows: the default identity is fine
 
-    app = build_app()
-    server = BackgroundServer(app)
+    built = []
+
+    def make_server():
+        # The slow part (imports, database, embedding model) happens here,
+        # behind the loading screen rather than before the window exists.
+        app = build_app()
+        built.append(app)
+        return BackgroundServer(app)
+
     width, height = fit_to(work_area())
     try:
-        run(server, webview, width=width, height=height,
+        run(make_server, webview, width=width, height=height,
             icon=str(ICON) if ICON.is_file() else None)
     finally:
         # A Reel Inbox run may be mid-pause between Instagram fetches; ask it
         # to stop rather than leave a fetch half done as the process exits.
-        app.state.reel_worker.stop()
+        for app in built:
+            app.state.reel_worker.stop()
 
 
 if __name__ == "__main__":

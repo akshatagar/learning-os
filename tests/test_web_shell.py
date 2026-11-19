@@ -78,7 +78,7 @@ def test_a_server_that_dies_on_startup_fails_fast():
 
 
 class FakeServer:
-    # `log` lets a caller hand both fakes the same list, so their calls land
+    # `log` lets a caller hand the fakes the same list, so their calls land
     # on one timeline and can be ordered against each other.
     def __init__(self, url="http://127.0.0.1:8765/", log=None):
         self.url = url
@@ -94,19 +94,40 @@ class FakeServer:
         self.calls.append("stop")
 
 
+class FakeWindow:
+    def __init__(self, log):
+        self.calls = log
+        self.urls, self.pages = [], []
+
+    def load_url(self, url):
+        self.calls.append("load_url")
+        self.urls.append(url)
+
+    def load_html(self, html):
+        self.calls.append("load_html")
+        self.pages.append(html)
+
+
 class FakeGui:
+    """pywebview's surface, as run() uses it: start(func) runs func once the
+    window exists, then blocks until the window closes."""
+
     def __init__(self, on_start=None, log=None):
         self.windows = []
         self.calls = [] if log is None else log
         self._on_start = on_start
+        self.window = FakeWindow(self.calls)
 
-    def create_window(self, title, url, **kwargs):
+    def create_window(self, title, url=None, **kwargs):
         self.calls.append("create_window")
         self.windows.append({"title": title, "url": url, **kwargs})
+        return self.window
 
-    def start(self, **kwargs):
+    def start(self, func=None, **kwargs):
         self.calls.append("gui_start")
         self.start_kwargs = kwargs
+        if func:
+            func()
         if self._on_start:
             self._on_start()
 
@@ -114,7 +135,7 @@ class FakeGui:
 def test_the_window_carries_the_app_icon_when_one_is_given():
     server, gui = FakeServer(), FakeGui()
 
-    run(server, gui, icon="learning-os.ico")
+    run(lambda: server, gui, icon="learning-os.ico")
 
     assert gui.start_kwargs == {"icon": "learning-os.ico"}
 
@@ -125,41 +146,58 @@ def test_the_icon_file_ships_with_the_repo():
     assert ICON.is_file() and ICON.suffix == ".ico"
 
 
-def test_the_window_opens_on_the_server_url():
-    server, gui = FakeServer(), FakeGui()
-
-    run(server, gui)
-
-    assert gui.windows[0]["url"] == server.url
-
-
-def test_the_window_opens_in_the_panel_ground_colour():
-    """pywebview paints the frame white before any stylesheet loads.
-
-    Left at the default, every launch flashes white against the ground.
-    """
-    server, gui = FakeServer(), FakeGui()
-
-    run(server, gui)
-
-    assert gui.windows[0]["background_color"] == BACKGROUND
-
-
-def test_the_server_is_ready_before_the_window_is_created():
-    """Ordering is the whole risk. A window created first shows an error page."""
+def test_the_window_opens_at_once_on_a_loading_screen():
+    """Startup takes seconds (imports, the embedding model). The window comes
+    up before any of it, so a click on the taskbar answers immediately."""
     timeline = []
     server, gui = FakeServer(log=timeline), FakeGui(log=timeline)
 
-    run(server, gui)
+    run(lambda: server, gui)
 
-    assert timeline.index("ready") < timeline.index("create_window")
+    assert gui.windows[0]["url"] is None
+    assert "Starting Learning OS" in gui.windows[0]["html"]
+    assert timeline.index("create_window") < timeline.index("start")
+
+
+def test_the_app_loads_only_once_the_server_is_ready():
+    """A window pointed at a socket that is not listening shows an error page."""
+    timeline = []
+    server, gui = FakeServer(log=timeline), FakeGui(log=timeline)
+
+    run(lambda: server, gui)
+
+    assert gui.window.urls == [server.url]
+    assert timeline.index("ready") < timeline.index("load_url")
+
+
+def test_the_window_opens_maximized_in_the_panel_ground_colour():
+    server, gui = FakeServer(), FakeGui()
+
+    run(lambda: server, gui)
+
+    assert gui.windows[0]["maximized"] is True
+    assert gui.windows[0]["background_color"] == BACKGROUND
+
+
+def test_a_server_that_cannot_start_is_reported_in_the_window():
+    """With no console, an exception nobody shows is a window stuck on
+    'Starting' forever."""
+    def broken():
+        raise RuntimeError("port 8765 is taken")
+
+    gui = FakeGui()
+
+    run(broken, gui)
+
+    assert gui.window.urls == []
+    assert "port 8765 is taken" in gui.window.pages[0]
 
 
 def test_closing_the_window_stops_the_server():
     """gui.start() returns when the window closes - that is the shutdown signal."""
     server, gui = FakeServer(), FakeGui()
 
-    run(server, gui)
+    run(lambda: server, gui)
 
     assert server.calls == ["start", "ready", "stop"]
 
@@ -172,17 +210,15 @@ def test_the_server_stops_even_if_the_gui_raises():
     server, gui = FakeServer(), FakeGui(on_start=explode)
 
     with pytest.raises(RuntimeError, match="gui exploded"):
-        run(server, gui)
+        run(lambda: server, gui)
 
     assert "stop" in server.calls
 
 
-def test_the_window_cannot_be_shrunk_below_the_rail():
-    """The rail scales with the window, and past a point the stage labels
-    stop being readable. Refusing the resize beats degrading silently."""
+def test_the_window_cannot_be_shrunk_below_its_minimum():
     server, gui = FakeServer(), FakeGui()
 
-    run(server, gui)
+    run(lambda: server, gui)
 
     assert gui.windows[0]["min_size"] == MIN_SIZE
 
