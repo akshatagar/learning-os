@@ -211,34 +211,74 @@ def test_only_web_addresses_are_ever_opened(url, safe):
 
 # --- worker --------------------------------------------------------------------
 
-def test_a_run_pulls_then_processes_and_only_one_runs_at_a_time(sessions):
+class Exploding:
+    """A source or extractor that must never be touched."""
+
+    name = "exploding"
+
+    def pull(self):
+        raise AssertionError("pulled")
+
+    def extract(self, url):
+        raise AssertionError("extracted")
+
+
+def test_processing_never_pulls(sessions):
+    from reel_inbox.worker import Worker
+
+    _add(sessions, "c0")
+    worker = Worker(sessions, lambda: FakeExtractor({_url("c0"): ANSWER}), Exploding,
+                    delay=(0, 0))
+    assert worker.start() is True
+    worker.join(5)
+    assert worker.status()["last_error"] is None
+    assert worker.status()["last_pulled"] is None
+    assert _status(sessions, "c0") == ("ready", None)
+
+
+def test_a_pull_never_processes(sessions):
+    from reel_inbox.worker import Worker
+
+    source = FakeSource([RemoteCapture("r1", _url("r1"), None, NOW)])
+    worker = Worker(sessions, Exploding, lambda: source, delay=(0, 0))
+    assert worker.start_pull() is True
+    worker.join(5)
+    status = worker.status()
+    assert (status["last_pulled"], status["last_pull_error"]) == (1, None)
+    assert status["last_report"] is None
+    assert _status(sessions, "r1") == ("pending", None)
+
+
+def test_a_pull_and_a_run_never_overlap(sessions):
     import threading
 
     from reel_inbox.worker import Worker
 
-    gate = threading.Event()
+    _add(sessions, "r1")
+    entered, gate = threading.Event(), threading.Event()
 
-    class SlowExtractor(FakeExtractor):
+    class Slow(FakeExtractor):
         def extract(self, url):
+            entered.set()
             gate.wait(5)
             return super().extract(url)
 
-    source = FakeSource([RemoteCapture("r1", _url("r1"), None, NOW)])
-    worker = Worker(sessions, lambda: SlowExtractor({_url("r1"): ANSWER}), lambda: source,
+    worker = Worker(sessions, lambda: Slow({_url("r1"): ANSWER}), lambda: FakeSource([]),
                     delay=(0, 0))
     assert worker.start() is True
-    assert worker.start() is False  # still running
+    assert entered.wait(5)
+    assert worker.status()["job"] == "process"
+    assert worker.start_pull() is False
+    assert worker.start() is False
     gate.set()
     worker.join(5)
-    assert worker.status()["last_pulled"] == 1
-    assert worker.status()["last_report"]["processed"] == 1
-    assert _status(sessions, "r1") == ("ready", None)
+    assert worker.status()["job"] is None
+    assert worker.start_pull() is True
+    worker.join(5)
 
 
-def test_an_unreachable_inbox_does_not_stop_processing(sessions):
+def test_an_unreachable_inbox_is_a_pull_error(sessions):
     from reel_inbox.worker import Worker
-
-    _add(sessions, "c0")
 
     class Down:
         name = "down"
@@ -246,11 +286,20 @@ def test_an_unreachable_inbox_does_not_stop_processing(sessions):
         def pull(self):
             raise ConnectionError("offline")
 
-    worker = Worker(sessions, lambda: FakeExtractor({_url("c0"): ANSWER}), Down, delay=(0, 0))
-    worker.start()
+    worker = Worker(sessions, Exploding, Down, delay=(0, 0))
+    worker.start_pull()
     worker.join(5)
-    assert "pull failed" in worker.status()["last_error"]
-    assert _status(sessions, "c0") == ("ready", None)
+    assert "offline" in worker.status()["last_pull_error"]
+    assert worker.status()["last_error"] is None
+
+
+def test_no_mailbox_pulls_nothing(sessions):
+    from reel_inbox.worker import Worker
+
+    worker = Worker(sessions, Exploding, lambda: None, delay=(0, 0))
+    worker.start_pull()
+    worker.join(5)
+    assert (worker.status()["last_pulled"], worker.status()["last_pull_error"]) == (0, None)
 
 
 # --- the reel being processed --------------------------------------------------

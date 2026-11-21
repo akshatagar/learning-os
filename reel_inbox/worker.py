@@ -1,5 +1,6 @@
-"""One background run at a time: pull new captures, then process a capped
-batch. Started on app launch and by "Process now"; stopped by Quit."""
+"""One background job at a time, of two kinds, both started by hand: a pull
+copies new captures from the mailbox; a processing run summarizes a capped
+batch of stored ones. Neither starts the other, and Quit stops either."""
 import logging
 import threading
 from dataclasses import asdict
@@ -25,7 +26,10 @@ class Worker:
         self._thread: threading.Thread | None = None
         self.last_report: RunReport | None = None
         self.last_pulled: int | None = None
+        # Processing errors only; a failed pull is reported apart.
         self.last_error: str | None = None
+        self.last_pull_error: str | None = None
+        self.job: str | None = None
         # The reel being extracted right now: it cannot be dropped or written up.
         self.current: str | None = None
 
@@ -34,14 +38,32 @@ class Worker:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> bool:
-        """Begin a run in the background. False if one is already going."""
+        """Begin a processing run in the background. False if a job is going."""
+        return self._begin(self._process, "process")
+
+    def start_pull(self) -> bool:
+        """Begin a pull in the background. False if a job is going."""
+        return self._begin(self._pull, "pull")
+
+    def _begin(self, target, job: str) -> bool:
         with self._lock:
             if self.running:
                 return False
             self._stop.clear()
-            self._thread = threading.Thread(target=self._run, name="reel-inbox", daemon=True)
+            self.job = job
+            self._thread = threading.Thread(target=self._finish(target), name=f"reel-{job}",
+                                            daemon=True)
             self._thread.start()
             return True
+
+    def _finish(self, target):
+        def run():
+            try:
+                target()
+            finally:
+                self.current = None
+                self.job = None
+        return run
 
     def stop(self, timeout: float = 10.0) -> None:
         """Ask the run to end between items (or mid-pause) and wait for it."""
@@ -53,15 +75,17 @@ class Worker:
         if self._thread:
             self._thread.join(timeout)
 
-    def _run(self) -> None:
-        self.last_error = None
+    def _pull(self) -> None:
+        self.last_pull_error = None
         try:
             source = self.source_factory()
-            if source is not None:
-                self.last_pulled = import_captures(self.sessions, source)
-        except Exception as error:  # an unreachable inbox must not block processing
-            self.last_error = f"pull failed: {type(error).__name__}: {error}"
-            log.warning(self.last_error)
+            self.last_pulled = import_captures(self.sessions, source) if source is not None else 0
+        except Exception as error:
+            self.last_pull_error = f"pull failed: {type(error).__name__}: {error}"
+            log.warning(self.last_pull_error)
+
+    def _process(self) -> None:
+        self.last_error = None
         try:
             self.last_report = process_pending(
                 self.sessions, self.extractor_factory(), limit=self.limit, delay=self.delay,
@@ -72,8 +96,6 @@ class Worker:
         except Exception as error:
             self.last_error = f"processing failed: {type(error).__name__}: {error}"
             log.exception("reel inbox run failed")
-        finally:
-            self.current = None
 
     def _set_current(self, capture_id: str | None) -> None:
         self.current = capture_id
@@ -81,8 +103,10 @@ class Worker:
     def status(self) -> dict:
         return {
             "running": self.running,
+            "job": self.job,
             "current": self.current,
             "last_pulled": self.last_pulled,
             "last_report": asdict(self.last_report) if self.last_report else None,
             "last_error": self.last_error,
+            "last_pull_error": self.last_pull_error,
         }
