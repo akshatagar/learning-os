@@ -2,7 +2,7 @@ import { renderApproval } from "./approval.js";
 import { renderConcepts } from "./concepts.js";
 import { connectEvents } from "./events.js";
 import { renderGoals } from "./goals.js";
-import { renderCoverage, renderLatest, renderNeeds } from "./home.js";
+import { readOllama, renderCoverage, renderLatest, renderNeeds } from "./home.js";
 import { renderIdeas } from "./ideas.js";
 import { initInbox, renderInbox } from "./inbox.js";
 import { renderIngest, stopTicking } from "./ingest.js";
@@ -38,9 +38,10 @@ async function readInbox() {
 // One read of /state draws the flow and the nav dots; the Inbox node and the
 // home panels add their own endpoints.
 async function refresh() {
-  const [state, inbox] = await Promise.all([
+  const [state, inbox, ollama] = await Promise.all([
     fetch("/state").then((response) => response.json()),
     readInbox(),
+    readOllama(),
   ]);
   const inboxStage = {
     id: "inbox", label: "Inbox",
@@ -55,7 +56,7 @@ async function refresh() {
   }
 
   if (surface.hidden) {
-    renderNeeds(state, inbox, openById, processInbox);
+    renderNeeds(state, inbox, openById, processInbox, ollama);
     renderLatest(inbox, openById);
     renderCoverage(openById);
   }

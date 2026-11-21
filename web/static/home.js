@@ -45,7 +45,7 @@ const ASKS = {
   skills: () => ["No skills on record", "Scoring needs to know what you can do", "Add skills"],
 };
 
-export function renderNeeds(state, inbox, open, process) {
+export function renderNeeds(state, inbox, open, process, ollama = null) {
   const waiting = state.stages.filter((s) => s.lamp === "holding" && ASKS[s.id]);
   const pending = inbox ? inbox.counts.pending : 0;
 
@@ -89,6 +89,53 @@ export function renderNeeds(state, inbox, open, process) {
     text.appendChild(el("small", null, "Ingest a paper or save a reel to keep things moving"));
     row.append(text, button("Ingest", () => open("ingest")));
     needs.appendChild(row);
+  }
+  needs.appendChild(ollamaRow(ollama));
+}
+
+// Ollama runs the summaries, drafts, matching and resolution, and is not
+// started at login here, so the home page can start and stop it. Starting
+// takes a few seconds: the row says so and checks until it answers.
+const OLLAMA_WAIT_MS = 1000;
+const OLLAMA_WAIT_TRIES = 30;
+
+function ollamaRow(ollama) {
+  const row = el("div", "todo");
+  const known = ollama !== null;
+  const text = el("div", "todo__what",
+    !known ? "Ollama status unknown" : ollama.running ? "Ollama is running" : "Ollama is stopped");
+  const why = el("small", null, "Summaries, drafts, matching and resolution use it");
+  text.appendChild(why);
+  const action = button(known && ollama.running ? "Stop Ollama" : "Start Ollama", async () => {
+    action.disabled = true;
+    if (known && ollama.running) {
+      action.textContent = "Stopping…";
+      await fetch("/ollama/stop", { method: "POST" });
+    } else {
+      action.textContent = "Starting…";
+      const response = await fetch("/ollama/start", { method: "POST" });
+      if (!response.ok) {
+        const answer = await response.json().catch(() => ({}));
+        why.textContent = answer.detail || "Could not start Ollama.";
+        action.textContent = "Start Ollama";
+        action.disabled = false;
+        return;
+      }
+      for (let i = 0; i < OLLAMA_WAIT_TRIES && !(await readOllama())?.running; i++) {
+        await new Promise((resolve) => setTimeout(resolve, OLLAMA_WAIT_MS));
+      }
+    }
+    row.replaceWith(ollamaRow(await readOllama()));
+  });
+  row.append(text, action);
+  return row;
+}
+
+export async function readOllama() {
+  try {
+    return await fetch("/ollama").then((response) => response.json());
+  } catch {
+    return null;
   }
 }
 

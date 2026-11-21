@@ -42,6 +42,7 @@ from skills.entry import (
     set_proficiency,
 )
 from storage.models import Goal, MergeQueue, Opportunity, Recommendation, Skill
+from web import ollama_control
 from web.jobs import JobRegistry
 from web.state import panel_state
 
@@ -170,9 +171,34 @@ def create_app(engine, collection, registry: JobRegistry | None = None,
             "elapsed_seconds": round(time.monotonic() - job.started_at, 1),
         }
 
+    # On app.state like the others, so a test never starts or kills a real
+    # Ollama.
+    app.state.ollama = ollama_control
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
+
+    @app.get("/ollama")
+    def ollama_status() -> dict:
+        return {"running": app.state.ollama.is_running()}
+
+    @app.post("/ollama/start")
+    def ollama_start() -> dict:
+        """Start Ollama unless it already answers. The page polls /ollama
+        until it does."""
+        if app.state.ollama.is_running():
+            return {"started": False}
+        try:
+            app.state.ollama.start()
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Ollama is not installed")
+        return {"started": True}
+
+    @app.post("/ollama/stop")
+    def ollama_stop() -> dict:
+        app.state.ollama.stop()
+        return {"ok": True}
 
     @app.post("/jobs/{kind}")
     def start_job(kind: str) -> dict:
