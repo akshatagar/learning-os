@@ -183,7 +183,9 @@ body[data-surface="open"] .home { display: none; }
 .inbox__reel { padding: var(--step-3) 0; border-bottom: 1px solid var(--line-hairline); }
 .inbox__reel .gate__legend { margin: 0 0 var(--step-1); }
 .inbox__note { margin: 0 0 var(--step-1); color: var(--lamp-holding); }
+.inbox__title { margin: 0 0 var(--step-1); font-weight: 600; }
 .inbox__summary { margin: 0 0 var(--step-2); line-height: 1.55; }
+.inbox__reel .goals__editor { margin: 0 0 var(--step-2); }
 .inbox__footer {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--step-2) var(--step-3);
   margin-top: var(--step-4); padding-top: var(--step-3); border-top: 1px solid var(--line-hairline);

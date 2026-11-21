@@ -12,10 +12,20 @@ const STATUS_TEXT = {
   failed: "Could not be processed",
 };
 
-async function post(path) {
-  const response = await fetch(path, { method: "POST" });
-  return response.json();
+async function post(path, body) {
+  const response = await fetch(path, body === undefined ? { method: "POST" } : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { ok: response.ok, ...(await response.json()) };
 }
+
+// While a run is going the page re-reads itself, so the reel being processed
+// shows as locked and drops back when it is done. Never while a form is open.
+const REFRESH_MS = 3000;
+let refreshTimer = null;
+let writing = false;
 
 async function readInbox() {
   const state = await fetch("/inbox").then((response) => response.json());
@@ -38,28 +48,88 @@ function dateLabel(iso) {
   }).toUpperCase();
 }
 
-function reelRow(reel) {
+function reelPath(reel, action) {
+  return `/inbox/reels/${encodeURIComponent(reel.id)}/${action}`;
+}
+
+// A title and description in place of the LLM summary. Replaces the card's
+// status line and buttons until it is saved or cancelled.
+function writeForm(reel, restore) {
+  const form = el("form", "goals__editor");
+  const title = el("input", "goals__input");
+  title.placeholder = "Title";
+  title.maxLength = 200;
+  title.required = true;
+  title.setAttribute("aria-label", "Title");
+  const description = el("textarea", "goals__textarea");
+  description.placeholder = "Description (optional)";
+  description.maxLength = 2000;
+  description.rows = 3;
+  description.setAttribute("aria-label", "Description");
+  const error = el("p", "goals__warning");
+  error.hidden = true;
+
+  const save = el("button", "gate__button gate__button--primary", "SAVE");
+  save.type = "submit";
+  const actions = el("div", "gate__actions");
+  actions.append(save, button("CANCEL", () => { writing = false; restore(); }));
+  form.append(title, description, error, actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    save.disabled = true;
+    const answer = await post(reelPath(reel, "manual"),
+      { title: title.value, description: description.value });
+    if (answer.ok) {
+      writing = false;
+      renderInbox();
+      return;
+    }
+    error.textContent = typeof answer.detail === "string" ? answer.detail : "Could not save.";
+    error.hidden = false;
+    save.disabled = false;
+  });
+  return form;
+}
+
+function reelRow(reel, current) {
   const row = el("li", "inbox__reel");
   row.appendChild(el("p", "gate__legend", dateLabel(reel.captured_at)));
   if (reel.note) row.appendChild(el("p", "inbox__note", reel.note));
+  if (reel.title) row.appendChild(el("p", "inbox__title", reel.title));
 
+  const processing = reel.id === current;
+  const rest = [];
   if (reel.summary) {
-    row.appendChild(el("p", "inbox__summary", reel.summary));
-  } else {
+    rest.push(el("p", "inbox__summary", reel.summary));
+  } else if (!reel.title) {
     const reason = reel.status === "failed" && reel.fail_reason ? `: ${reel.fail_reason}.` : "";
-    row.appendChild(el("p", "surface__empty",
-      `${STATUS_TEXT[reel.status] || ""}${reason}`));
+    rest.push(el("p", "surface__empty", processing ? "Being processed now."
+      : `${STATUS_TEXT[reel.status] || ""}${reason}`));
   }
 
   const actions = el("div", "gate__actions");
-  actions.append(
-    button("OPEN REEL", () => post(`/inbox/reels/${encodeURIComponent(reel.id)}/open`)),
-    button("DROP", async () => {
-      await post(`/inbox/reels/${encodeURIComponent(reel.id)}/drop`);
-      renderInbox();
-    }),
-  );
-  row.appendChild(actions);
+  actions.append(button("OPEN REEL", () => post(reelPath(reel, "open"))));
+  const unsummarized = reel.status === "pending" || reel.status === "failed";
+  if (unsummarized && !processing) {
+    actions.append(button("WRITE IT", () => {
+      writing = true;
+      for (const node of rest) node.remove();
+      row.appendChild(writeForm(reel, () => {
+        row.replaceWith(reelRow(reel, current));
+      }));
+      row.querySelector("input").focus();
+    }));
+  }
+  const drop = button(processing ? "PROCESSING…" : "DROP", async () => {
+    const answer = await post(reelPath(reel, "drop"));
+    if (!answer.ok) drop.textContent = "PROCESSING…";
+    renderInbox();
+  });
+  drop.disabled = processing;
+  actions.append(drop);
+  rest.push(actions);
+  row.append(...rest);
   return row;
 }
 
@@ -81,21 +151,35 @@ function footer(state) {
   return wrap;
 }
 
+function scheduleRefresh(state) {
+  clearTimeout(refreshTimer);
+  refreshTimer = null;
+  if (state.worker && state.worker.running) {
+    refreshTimer = setTimeout(() => {
+      if (!writing && showing("inbox")) renderInbox();
+      else if (showing("inbox")) scheduleRefresh(state);
+    }, REFRESH_MS);
+  }
+}
+
 export async function renderInbox() {
   const state = await readInbox();
   if (!showing("inbox")) return;
+  writing = false;
   body.replaceChildren();
   count.textContent = state.reels.length ? `${state.reels.length} REELS` : "";
+  const current = state.worker ? state.worker.current : null;
 
   if (state.reels.length) {
     const list = el("ul", "inbox__list");
-    for (const reel of state.reels) list.appendChild(reelRow(reel));
+    for (const reel of state.reels) list.appendChild(reelRow(reel, current));
     body.appendChild(list);
   } else {
     body.appendChild(el("p", "surface__empty",
       "No reels yet. Share one to Save to Reel Inbox on your phone."));
   }
   body.appendChild(footer(state));
+  scheduleRefresh(state);
 }
 
 export function initInbox() {
