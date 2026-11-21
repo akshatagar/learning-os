@@ -455,3 +455,14 @@ def test_an_empty_description_is_stored_as_none(sessions):
         reels.write_manual(s, "m1", "uv", "   ")
     with sessions() as s:
         assert s.get(Extraction, "m1").summary is None
+
+
+def test_ollama_not_running_stops_the_run_and_fails_nothing(sessions):
+    _add(sessions, "o1", age_days=2)
+    _add(sessions, "o2", age_days=1)
+    extractor = FakeExtractor({_url("o1"): "llm_unavailable", _url("o2"): ANSWER})
+    report = process_pending(sessions, extractor, delay=(0, 0), sleep=lambda _: None)
+    assert report.stopped == "llm_unavailable"
+    assert extractor.seen == [_url("o1")]
+    assert _status(sessions, "o1") == ("pending", None)
+    assert _status(sessions, "o2") == ("pending", None)

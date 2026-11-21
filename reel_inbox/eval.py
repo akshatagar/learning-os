@@ -13,7 +13,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from reel_inbox.extractor.pipeline import ExtractionFailed
 
-STOP_REASONS = ("rate_limited", "login_wall")
+# Not the reel's fault: the run stops and the rest stay pending.
+STOP_REASONS = ("rate_limited", "login_wall", "llm_unavailable")
 # Summaries are cut to this in the printed table; the CSV keeps them whole.
 TABLE_SUMMARY = 80
 NOT_RUN = "not_run_after_stop"

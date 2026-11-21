@@ -190,13 +190,24 @@ def test_an_empty_summary_is_reported_as_no_summary():
 
 def test_a_model_error_is_reported_as_llm_error():
     def broken(evidence):
-        raise ConnectionError("ollama down")
+        raise ValueError("not json")
 
     fetcher = FakeFetcher(FetchResult(meta={"title": "t"}, captions="c", media_path=None))
     extractor, _ = _extractor(fetcher, llm=broken)
     with pytest.raises(ExtractionFailed) as caught:
         extractor.extract("u")
     assert caught.value.reason == "llm_error"
+
+
+def test_ollama_not_running_is_its_own_reason():
+    def down(evidence):
+        raise ConnectionError("Failed to connect to Ollama.")
+
+    fetcher = FakeFetcher(FetchResult(meta={"title": "t"}, captions="c", media_path=None))
+    extractor, _ = _extractor(fetcher, llm=down)
+    with pytest.raises(ExtractionFailed) as caught:
+        extractor.extract("u")
+    assert caught.value.reason == "llm_unavailable"
 
 
 # --- security hardening ------------------------------------------------------

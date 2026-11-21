@@ -7,7 +7,7 @@ from reel_inbox.extractor.schema import normalize
 
 class ExtractionFailed(Exception):
     """reason is a short code: login_wall, rate_limited, unavailable,
-    fetch_error, no_evidence, llm_error, no_summary."""
+    fetch_error, no_evidence, llm_unavailable, llm_error, no_summary."""
 
     def __init__(self, reason: str, detail: str = ""):
         super().__init__(f"{reason}: {detail}" if detail else reason)
@@ -70,6 +70,10 @@ class ReelExtractor:
 
         try:
             answer = normalize(self.llm_fn(evidence))
+        except ConnectionError as error:
+            # Ollama is not running: not this reel's fault, so the run stops
+            # and the reel stays pending (see STOP_REASONS).
+            raise ExtractionFailed("llm_unavailable", str(error)) from error
         except Exception as error:
             raise ExtractionFailed("llm_error", f"{type(error).__name__}: {error}") from error
         if answer["summary"] is None:
