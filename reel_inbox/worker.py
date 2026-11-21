@@ -26,6 +26,8 @@ class Worker:
         self.last_report: RunReport | None = None
         self.last_pulled: int | None = None
         self.last_error: str | None = None
+        # The reel being extracted right now: it cannot be dropped or written up.
+        self.current: str | None = None
 
     @property
     def running(self) -> bool:
@@ -65,14 +67,21 @@ class Worker:
                 self.sessions, self.extractor_factory(), limit=self.limit, delay=self.delay,
                 # Waiting on the event, not time.sleep, so Quit interrupts a pause.
                 sleep=self._stop.wait, should_stop=self._stop.is_set,
+                on_item=self._set_current,
             )
         except Exception as error:
             self.last_error = f"processing failed: {type(error).__name__}: {error}"
             log.exception("reel inbox run failed")
+        finally:
+            self.current = None
+
+    def _set_current(self, capture_id: str | None) -> None:
+        self.current = capture_id
 
     def status(self) -> dict:
         return {
             "running": self.running,
+            "current": self.current,
             "last_pulled": self.last_pulled,
             "last_report": asdict(self.last_report) if self.last_report else None,
             "last_error": self.last_error,

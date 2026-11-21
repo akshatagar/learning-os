@@ -29,12 +29,16 @@ class RunReport:
 
 def process_pending(session_factory, extractor, limit: int = DEFAULT_LIMIT,
                     delay=DEFAULT_DELAY, sleep=time.sleep, jitter=random.uniform,
-                    should_stop=lambda: False, now=lambda: datetime.now(timezone.utc)) -> RunReport:
+                    should_stop=lambda: False, now=lambda: datetime.now(timezone.utc),
+                    on_item=lambda capture_id: None) -> RunReport:
     """One run over a snapshot of the oldest pending captures.
 
     A failure is never retried within the run. The first failure keeps the
     item pending with its reason (so the next run tries once more); the
     second moves it to failed for good.
+
+    A reel written up by hand or dropped after the snapshot is skipped.
+    on_item is told the id of the reel being extracted, then None.
     """
     report = RunReport()
     with session_factory() as session:
@@ -49,35 +53,45 @@ def process_pending(session_factory, extractor, limit: int = DEFAULT_LIMIT,
             report.stopped = "stop_requested"
             break
         with session_factory() as session:
-            capture = session.get(Capture, capture_id)
-            if is_instagram(capture.url):
-                if fetched_instagram:
-                    sleep(jitter(*delay))
-                    if should_stop():
-                        report.stopped = "stop_requested"
-                        break
-                fetched_instagram = True
-            try:
-                answer = extractor.extract(capture.url)
-            except ExtractionFailed as failure:
-                if failure.reason in STOP_REASONS:
-                    # Not the item's fault: leave it as it was and stop.
-                    report.stopped = failure.reason
+            url = session.get(Capture, capture_id).url
+        if is_instagram(url):
+            if fetched_instagram:
+                sleep(jitter(*delay))
+                if should_stop():
+                    report.stopped = "stop_requested"
                     break
-                if capture.fail_reason is None:
-                    capture.fail_reason = failure.reason
-                    report.retry_next_run += 1
-                else:
-                    capture.status, capture.fail_reason = "failed", failure.reason
-                    report.failed += 1
-                session.commit()
-                continue
+            fetched_instagram = True
+        # Locked first, then re-read: a drop or write-up during the pause
+        # above is seen, and none can land once the lock is held.
+        on_item(capture_id)
+        try:
+            with session_factory() as session:
+                capture = session.get(Capture, capture_id)
+                if capture.status != "pending":
+                    continue
+                try:
+                    answer = extractor.extract(capture.url)
+                except ExtractionFailed as failure:
+                    if failure.reason in STOP_REASONS:
+                        # Not the item's fault: leave it as it was and stop.
+                        report.stopped = failure.reason
+                        break
+                    if capture.fail_reason is None:
+                        capture.fail_reason = failure.reason
+                        report.retry_next_run += 1
+                    else:
+                        capture.status, capture.fail_reason = "failed", failure.reason
+                        report.failed += 1
+                    session.commit()
+                    continue
 
-            session.merge(Extraction(
-                capture_id=capture.id, summary=answer["summary"],
-                model=getattr(extractor, "model", None), extracted_at=now(),
-            ))
-            capture.status, capture.fail_reason = "ready", None
-            session.commit()
-            report.processed += 1
+                session.merge(Extraction(
+                    capture_id=capture.id, summary=answer["summary"],
+                    model=getattr(extractor, "model", None), extracted_at=now(),
+                ))
+                capture.status, capture.fail_reason = "ready", None
+                session.commit()
+                report.processed += 1
+        finally:
+            on_item(None)
     return report

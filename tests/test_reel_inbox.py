@@ -251,3 +251,94 @@ def test_an_unreachable_inbox_does_not_stop_processing(sessions):
     worker.join(5)
     assert "pull failed" in worker.status()["last_error"]
     assert _status(sessions, "c0") == ("ready", None)
+
+
+# --- the reel being processed --------------------------------------------------
+
+def _set_status(sessions, id_, status):
+    with sessions() as s:
+        s.get(Capture, id_).status = status
+        s.commit()
+
+
+class ChangesTheNext(FakeExtractor):
+    """Extracting the first reel changes the second one's status, as a
+    manual write-up or a drop would while the run is going."""
+
+    def __init__(self, sessions, first, second, to):
+        super().__init__({_url(first): ANSWER})
+        self.sessions, self.first, self.second, self.to = sessions, first, second, to
+
+    def extract(self, url):
+        assert url == _url(self.first), "the changed reel must not be extracted"
+        _set_status(self.sessions, self.second, self.to)
+        return super().extract(url)
+
+
+def test_a_run_skips_a_reel_that_stopped_being_pending(sessions):
+    _add(sessions, "p1", age_days=2)
+    _add(sessions, "p2", age_days=1)
+    report = process_pending(sessions, ChangesTheNext(sessions, "p1", "p2", "ready"),
+                             delay=(0, 0), sleep=lambda _: None)
+    assert report.processed == 1
+    assert _status(sessions, "p2") == ("ready", None)
+
+
+def test_a_run_skips_a_reel_dropped_after_the_snapshot(sessions):
+    _add(sessions, "p1", age_days=2)
+    _add(sessions, "p2", age_days=1)
+    process_pending(sessions, ChangesTheNext(sessions, "p1", "p2", "dropped"),
+                    delay=(0, 0), sleep=lambda _: None)
+    assert _status(sessions, "p2") == ("dropped", None)
+    with sessions() as s:
+        assert s.get(Extraction, "p2") is None
+
+
+def test_the_worker_reports_the_reel_it_is_on(sessions):
+    import threading
+
+    from reel_inbox.worker import Worker
+
+    _add(sessions, "r1")
+    entered, gate = threading.Event(), threading.Event()
+
+    class Slow(FakeExtractor):
+        def extract(self, url):
+            entered.set()
+            gate.wait(5)
+            return super().extract(url)
+
+    worker = Worker(sessions, lambda: Slow({_url("r1"): ANSWER}), delay=(0, 0))
+    assert worker.status()["current"] is None
+    worker.start()
+    assert entered.wait(5)
+    assert worker.status()["current"] == "r1"
+    gate.set()
+    worker.join(5)
+    assert worker.status()["current"] is None
+
+
+def test_current_is_cleared_when_the_run_fails(sessions):
+    from reel_inbox.worker import Worker
+
+    _add(sessions, "r1")
+
+    class Broken(FakeExtractor):
+        def extract(self, url):
+            raise RuntimeError("boom")
+
+    worker = Worker(sessions, lambda: Broken({}), delay=(0, 0))
+    worker.start()
+    worker.join(5)
+    assert worker.status()["current"] is None
+    assert "processing failed" in worker.status()["last_error"]
+
+
+def test_a_reel_dropped_during_the_pause_before_it_is_skipped(sessions):
+    _add(sessions, "p1", age_days=2)
+    _add(sessions, "p2", age_days=1)
+    extractor = FakeExtractor({_url("p1"): ANSWER})  # p2 would raise KeyError
+    process_pending(sessions, extractor, delay=(0, 0),
+                    sleep=lambda _: _set_status(sessions, "p2", "dropped"))
+    assert extractor.seen == [_url("p1")]
+    assert _status(sessions, "p2") == ("dropped", None)
