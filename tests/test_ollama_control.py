@@ -1,5 +1,6 @@
 """Starting and stopping the local Ollama server from the home page."""
 import subprocess
+import sys
 
 import httpx
 import pytest
@@ -26,8 +27,14 @@ def test_start_runs_ollama_serve_with_no_window():
                          find=lambda: r"C:\Ollama\ollama.exe")
     [(args, kw)] = calls
     assert args == [r"C:\Ollama\ollama.exe", "serve"]
-    assert kw["creationflags"] & subprocess.CREATE_NO_WINDOW
+    assert kw["creationflags"] == ollama_control.NO_WINDOW | ollama_control.DETACHED
     assert kw["stdout"] is subprocess.DEVNULL and kw["stderr"] is subprocess.DEVNULL
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the flags exist only on Windows")
+def test_on_windows_the_server_gets_no_console_window():
+    assert ollama_control.NO_WINDOW == subprocess.CREATE_NO_WINDOW
+    assert ollama_control.DETACHED == subprocess.DETACHED_PROCESS
 
 
 def test_start_without_ollama_installed_is_an_error():
