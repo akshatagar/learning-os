@@ -18,6 +18,9 @@ def make_router(session_factory, worker=None, open_url=webbrowser.open) -> APIRo
     router = APIRouter(prefix="/inbox")
 
     def refuse_if_processing(capture_id: str) -> None:
+        # Not under a lock shared with the worker: a request landing in the
+        # milliseconds while the worker takes the reel can still go through,
+        # and the LLM summary then replaces it. Accepted for one user.
         if worker is not None and worker.status().get("current") == capture_id:
             raise HTTPException(status_code=409, detail="that reel is being processed")
 

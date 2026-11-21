@@ -18,7 +18,9 @@ async function post(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return { ok: response.ok, ...(await response.json()) };
+  // An unhandled server error answers in plain text, not JSON.
+  const data = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, ...data };
 }
 
 // While a run is going the page re-reads itself, so the reel being processed
@@ -54,7 +56,7 @@ function reelPath(reel, action) {
 
 // A title and description in place of the LLM summary. Replaces the card's
 // status line and buttons until it is saved or cancelled.
-function writeForm(reel, restore) {
+function writeForm(reel) {
   const form = el("form", "goals__editor");
   const title = el("input", "goals__input");
   title.placeholder = "Title";
@@ -72,22 +74,32 @@ function writeForm(reel, restore) {
   const save = el("button", "gate__button gate__button--primary", "SAVE");
   save.type = "submit";
   const actions = el("div", "gate__actions");
-  actions.append(save, button("CANCEL", () => { writing = false; restore(); }));
+  // Cancel redraws from the server: the card may have changed while the
+  // form was open (the run reached it, or finished it).
+  actions.append(save, button("CANCEL", () => { writing = false; renderInbox(); }));
   form.append(title, description, error, actions);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     save.disabled = true;
-    const answer = await post(reelPath(reel, "manual"),
-      { title: title.value, description: description.value });
-    if (answer.ok) {
-      writing = false;
-      renderInbox();
-      return;
+    try {
+      const answer = await post(reelPath(reel, "manual"),
+        { title: title.value, description: description.value });
+      // 409: the reel is being processed or already summarized, so the form
+      // no longer applies; redraw to show what it is now.
+      if (answer.ok || answer.status === 409) {
+        writing = false;
+        renderInbox();
+        return;
+      }
+      error.textContent = typeof answer.detail === "string" ? answer.detail : "Could not save.";
+      error.hidden = false;
+    } catch {
+      error.textContent = "Could not reach the app.";
+      error.hidden = false;
+    } finally {
+      save.disabled = false;
     }
-    error.textContent = typeof answer.detail === "string" ? answer.detail : "Could not save.";
-    error.hidden = false;
-    save.disabled = false;
   });
   return form;
 }
@@ -115,9 +127,7 @@ function reelRow(reel, current) {
     actions.append(button("WRITE IT", () => {
       writing = true;
       for (const node of rest) node.remove();
-      row.appendChild(writeForm(reel, () => {
-        row.replaceWith(reelRow(reel, current));
-      }));
+      row.appendChild(writeForm(reel));
       row.querySelector("input").focus();
     }));
   }
