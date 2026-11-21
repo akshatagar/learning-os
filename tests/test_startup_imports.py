@@ -29,3 +29,31 @@ def test_the_app_does_not_load_the_pdf_parser_until_a_paper_is_ingested():
 def test_the_window_can_open_before_the_heavy_libraries_load():
     heavy = ["chromadb", "sentence_transformers", "torch", "docling", "web.app"]
     assert _loaded_after("import web.shell", heavy) == []
+
+
+def test_the_vector_store_opens_without_loading_the_embedding_model():
+    """sentence_transformers brings PyTorch: about ten seconds. The server
+    can listen without it; the model loads in the background after."""
+    assert _loaded_after("import storage.vectors", ["sentence_transformers", "torch"]) == []
+
+
+def test_the_lazy_embedding_function_keeps_chromas_identity():
+    """The collection on disk records which embedding function made it; a
+    different name or config would be refused when the collection opens."""
+    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+    from storage.vectors import EMBEDDING_FUNCTION
+
+    assert isinstance(EMBEDDING_FUNCTION, SentenceTransformerEmbeddingFunction)
+    assert EMBEDDING_FUNCTION.name() == SentenceTransformerEmbeddingFunction.name()
+    assert EMBEDDING_FUNCTION.get_config()["model_name"] == "all-MiniLM-L6-v2"
+
+
+def test_opening_the_collection_does_not_load_the_embedding_model(tmp_path):
+    """Chroma rebuilds the embedding function from its config when a
+    collection opens; that rebuild must stay lazy too."""
+    code = (
+        "from storage.vectors import get_chroma_client, get_concepts_collection; "
+        f"get_concepts_collection(get_chroma_client(r'{tmp_path}'))"
+    )
+    assert _loaded_after(code, ["sentence_transformers", "torch"]) == []

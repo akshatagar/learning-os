@@ -4,7 +4,7 @@ from pathlib import Path
 
 import uvicorn
 
-from web.serve import HOST, PORT, build_app
+from web.serve import HOST, PORT, build_app, warm_embeddings
 
 READY_POLL_SECONDS = 0.05
 
@@ -147,7 +147,7 @@ LOADING_HTML = _page("Starting Learning OS…")
 
 def run(make_server, gui, title: str = TITLE, width: int = WIDTH,
         height: int = HEIGHT, min_size: tuple[int, int] = MIN_SIZE,
-        icon: str | None = None) -> None:
+        icon: str | None = None, on_ready=None) -> None:
     """Open the window at once, then bring the server up behind it.
 
     The window appears on a loading screen the moment this is called, so a
@@ -174,6 +174,10 @@ def run(make_server, gui, title: str = TITLE, width: int = WIDTH,
             window.load_html(_page("Learning OS could not start.", f"{type(error).__name__}: {error}"))
             return
         window.load_url(server.url)
+        # Background work (the embedding model) starts only now: run while
+        # the server starts, it competes for Python's import lock.
+        if on_ready:
+            on_ready()
 
     try:
         # Blocks on the main thread until the window closes; boot runs once
@@ -211,7 +215,7 @@ def main() -> None:
     width, height = fit_to(work_area())
     try:
         run(make_server, webview, width=width, height=height,
-            icon=str(ICON) if ICON.is_file() else None)
+            icon=str(ICON) if ICON.is_file() else None, on_ready=warm_embeddings)
     finally:
         # A Reel Inbox run may be mid-pause between Instagram fetches; ask it
         # to stop rather than leave a fetch half done as the process exits.

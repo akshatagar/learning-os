@@ -1,3 +1,5 @@
+import threading
+
 import uvicorn
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -51,8 +53,27 @@ def build_app():
     return app
 
 
+def warm_embeddings() -> None:
+    """Load the embedding model in the background.
+
+    Called once the server is listening, not while it starts: importing
+    PyTorch holds Python's import lock for seconds, and the server's own
+    startup imports would queue behind it. Until it finishes, only a request
+    that needs embeddings (goal coverage, resolution) waits."""
+    from storage.vectors import EMBEDDING_FUNCTION
+
+    threading.Thread(target=EMBEDDING_FUNCTION.load, name="embedding-warmup",
+                     daemon=True).start()
+
+
 def main() -> None:
-    uvicorn.run(build_app(), host=HOST, port=PORT, log_level="warning")
+    app = build_app()
+
+    @app.on_event("startup")
+    def _warm() -> None:
+        warm_embeddings()
+
+    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
 
 
 if __name__ == "__main__":

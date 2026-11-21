@@ -239,3 +239,14 @@ def test_the_window_never_opens_below_its_minimum():
 
 def test_an_unknown_work_area_keeps_the_default_size():
     assert fit_to(None) == (WIDTH, HEIGHT)
+
+
+def test_background_work_starts_only_after_the_app_is_showing():
+    """Warming the embedding model while the server starts slowed the start
+    to a crawl (both wait on Python's import lock), so it comes after."""
+    timeline = []
+    server, gui = FakeServer(log=timeline), FakeGui(log=timeline)
+
+    run(lambda: server, gui, on_ready=lambda: timeline.append("warm"))
+
+    assert timeline.index("load_url") < timeline.index("warm")
