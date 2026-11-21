@@ -149,6 +149,26 @@ function reelRow(reel, current) {
   return row;
 }
 
+// Why a run ended early, when it was not the reels' fault.
+const STOPPED_TEXT = {
+  llm_unavailable: "Ollama isn't running. Start it from the home page, then Process now.",
+  login_wall: "Instagram wants a login. Sign in to Instagram in Firefox or Chrome, then try again.",
+  rate_limited: "Instagram is rate-limiting. Try again later.",
+};
+
+// What the last Process now did, in one line.
+function runSummary(report) {
+  const parts = [];
+  if (report.processed) parts.push(`${report.processed} summarized`);
+  if (report.failed) parts.push(`${report.failed} failed`);
+  if (report.retry_next_run) parts.push(`${report.retry_next_run} will retry`);
+  const done = parts.length ? `Last run: ${parts.join(", ")}.` : "";
+  const stopped = STOPPED_TEXT[report.stopped];
+  if (stopped) return done ? `${done} Then stopped: ${stopped}` : stopped;
+  if (report.stopped === "stop_requested") return done || "Last run was stopped.";
+  return done || "Nothing to process.";
+}
+
 function footer(state) {
   const wrap = el("div", "inbox__footer");
   const c = state.counts;
@@ -171,6 +191,9 @@ function footer(state) {
   if (worker && !job && worker.last_pulled !== null && !worker.last_pull_error) {
     wrap.appendChild(el("p", "gate__tally",
       worker.last_pulled === 1 ? "1 NEW" : `${worker.last_pulled} NEW`));
+  }
+  if (worker && job !== "process" && worker.last_report) {
+    wrap.appendChild(el("p", "surface__empty", runSummary(worker.last_report)));
   }
   for (const error of [worker && worker.last_pull_error, worker && worker.last_error]) {
     if (error) wrap.appendChild(el("p", "surface__empty", error));
