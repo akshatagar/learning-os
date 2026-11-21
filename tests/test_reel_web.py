@@ -111,3 +111,22 @@ def test_manual_entry_needs_a_title(env):
     assert client.post("/inbox/reels/b/manual", json={"title": "  "}).status_code == 400
     assert client.post("/inbox/reels/b/manual", json={}).status_code == 422
     assert client.post("/inbox/reels/nope/manual", json={"title": "uv"}).status_code == 404
+
+
+def test_pull_starts_a_pull(env):
+    _, sessions, _ = env
+
+    class PullWorker(FakeWorker):
+        pulls = 0
+
+        def start_pull(self):
+            PullWorker.pulls += 1
+            return True
+
+    body = _client(sessions, PullWorker()).post("/inbox/pull").json()
+    assert body["started"] is True and PullWorker.pulls == 1
+
+
+def test_pull_without_a_worker_is_unavailable(env):
+    client, *_ = env
+    assert client.post("/inbox/pull").status_code == 503

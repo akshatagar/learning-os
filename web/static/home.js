@@ -60,7 +60,8 @@ export function renderNeeds(state, inbox, open, process) {
   if (pending) {
     rows.push([plural(pending, "reel still to process", "reels still to process"),
       "Summaries are written in the background",
-      button(inbox.worker && inbox.worker.running ? "Processing…" : "Process now", process)]);
+      button(inbox.worker && inbox.worker.job === "process" ? "Processing…" : "Process now",
+        process)]);
   }
 
   const lede = waiting.length

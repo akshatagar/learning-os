@@ -74,8 +74,16 @@ def make_router(session_factory, worker=None, open_url=webbrowser.open) -> APIRo
 
     @router.post("/process")
     def process() -> dict:
+        """Summarize stored pending reels. Never pulls."""
         if worker is None:
             raise HTTPException(status_code=503, detail="processing is not available here")
         return {"started": worker.start(), **worker.status()}
+
+    @router.post("/pull")
+    def pull() -> dict:
+        """Copy new captures from the mailbox. Never runs the LLM."""
+        if worker is None:
+            raise HTTPException(status_code=503, detail="pulling is not available here")
+        return {"started": worker.start_pull(), **worker.status()}
 
     return router

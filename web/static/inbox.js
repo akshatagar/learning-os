@@ -148,15 +148,26 @@ function footer(state) {
   const c = state.counts;
   wrap.appendChild(el("p", "gate__tally",
     `${c.ready} READY · ${c.pending} PENDING · ${c.failed} FAILED · ${c.dropped} DROPPED`));
+  // Two separate jobs, both by hand: PULL fetches new reels from the phone's
+  // mailbox, PROCESS NOW runs the LLM over stored ones. One at a time.
   const worker = state.worker;
-  const process = button(worker && worker.running ? "PROCESSING…" : "PROCESS NOW", async () => {
+  const job = worker && worker.running ? worker.job : null;
+  const pull = button(job === "pull" ? "PULLING…" : "PULL", async () => {
+    await post("/inbox/pull");
+    renderInbox();
+  });
+  const process = button(job === "process" ? "PROCESSING…" : "PROCESS NOW", async () => {
     await post("/inbox/process");
     renderInbox();
   });
-  process.disabled = !worker || worker.running;
-  wrap.appendChild(process);
-  if (worker && worker.last_error) {
-    wrap.appendChild(el("p", "surface__empty", worker.last_error));
+  pull.disabled = process.disabled = !worker || Boolean(job);
+  wrap.append(pull, process);
+  if (worker && !job && worker.last_pulled !== null && !worker.last_pull_error) {
+    wrap.appendChild(el("p", "gate__tally",
+      worker.last_pulled === 1 ? "1 NEW" : `${worker.last_pulled} NEW`));
+  }
+  for (const error of [worker && worker.last_pull_error, worker && worker.last_error]) {
+    if (error) wrap.appendChild(el("p", "surface__empty", error));
   }
   return wrap;
 }

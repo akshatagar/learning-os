@@ -40,7 +40,7 @@ def main(argv=None) -> int:
     secret = sub.add_parser("set-secret", help="store a key in Windows Credential Manager")
     secret.add_argument("name", choices=sorted(NAMES))
     sub.add_parser("pull", help="copy waiting captures from the remote inbox")
-    sub.add_parser("process", help="pull, then process one capped batch of pending captures")
+    sub.add_parser("process", help="process one capped batch of stored pending captures (no pull)")
     args = parser.parse_args(argv)
 
     if args.command == "set-secret":

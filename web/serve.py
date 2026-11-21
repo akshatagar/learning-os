@@ -36,8 +36,8 @@ def protect(app):
 def build_app():
     """The one place the real stores are opened, shared by both entry points.
 
-    Starting the app starts one Reel Inbox run in the background: pull new
-    captures, then process a capped batch.
+    Starting the app starts no Reel Inbox job: pulling and processing both
+    wait for their buttons.
 
     The app and the vector store are imported here, not at module level, so
     the desktop shell can open its window before they load (seconds: the
@@ -49,7 +49,6 @@ def build_app():
     router, worker = build_inbox()
     app = protect(create_app(get_engine(DB_PATH), collection, extra_routers=[router]))
     app.state.reel_worker = worker
-    worker.start()
     return app
 
 
