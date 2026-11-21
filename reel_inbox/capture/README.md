@@ -23,7 +23,6 @@ Create a new Shortcut named **Save to Reel Inbox** and add these actions in orde
    - Method: **POST**
    - Headers:
      - `apikey`: *your publishable key*
-     - `Authorization`: `Bearer ` followed by *your publishable key*
      - `Content-Type`: `application/json`
      - `Prefer`: `return=minimal`
    - Request Body: **JSON**
@@ -31,7 +30,7 @@ Create a new Shortcut named **Save to Reel Inbox** and add these actions in orde
      - `note` (Text): *Provided Input*
 4. **Show Notification**: `Saved to Reel Inbox`.
 
-To use it, tap **Share** on a reel in Instagram, then **Save to Reel Inbox**. `Prefer: return=minimal` is required: the publishable key isn't allowed to read the row back.
+To use it, tap **Share** on a reel in Instagram, then **Save to Reel Inbox**. `Prefer: return=minimal` is required: the publishable key isn't allowed to read the row back. Don't add an `Authorization: Bearer` header with an `sb_publishable_` key: Supabase drops the request and the Shortcut reports "The network connection was lost". Only a legacy `eyJ…` anon key goes there as well.
 
 The publishable key in the Shortcut can only add Instagram or YouTube links to the table. If it leaks, someone can fill your inbox but not read it.
 

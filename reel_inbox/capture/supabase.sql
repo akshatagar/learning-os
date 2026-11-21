@@ -25,6 +25,10 @@ alter table public.captures enable row level security;
 revoke all on public.captures from anon, authenticated;
 grant insert (url, note) on public.captures to anon;
 
+-- The laptop's secret key acts as service_role. Newer projects no longer
+-- grant it table access by default, so pull would get 403 without this.
+grant select, delete on public.captures to service_role;
+
 drop policy if exists "shortcut inserts captures" on public.captures;
 create policy "shortcut inserts captures"
   on public.captures

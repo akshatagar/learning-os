@@ -20,7 +20,7 @@ def _client(log):
 
 def test_pull_reads_the_oldest_rows_with_the_secret_key():
     log = []
-    rows = SupabaseSource("https://p.supabase.co/", "sekret", _client(log)).pull()
+    rows = SupabaseSource("https://p.supabase.co/", "sb_secret_abc", _client(log)).pull()
 
     assert [(r.id, r.url, r.note) for r in rows] == [
         (ROWS[0]["id"], "https://www.instagram.com/reel/A/", "x")]
@@ -28,8 +28,16 @@ def test_pull_reads_the_oldest_rows_with_the_secret_key():
     request = log[0]
     assert request.url.path == "/rest/v1/captures"
     assert request.url.params["order"] == "created_at.asc"
-    assert request.headers["apikey"] == "sekret"
-    assert request.headers["authorization"] == "Bearer sekret"
+    assert request.headers["apikey"] == "sb_secret_abc"
+    # A new-style key is not a JWT: sent as a Bearer token, Supabase drops it.
+    assert "authorization" not in request.headers
+
+
+def test_a_legacy_jwt_key_is_also_sent_as_a_bearer_token():
+    log = []
+    SupabaseSource("https://p.supabase.co", "eyJhbGciOi.x.y", _client(log)).pull()
+    assert log[0].headers["apikey"] == "eyJhbGciOi.x.y"
+    assert log[0].headers["authorization"] == "Bearer eyJhbGciOi.x.y"
 
 
 def test_ack_deletes_exactly_the_pulled_ids():

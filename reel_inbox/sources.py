@@ -76,7 +76,11 @@ class SupabaseSource:
 
     def __init__(self, project_url: str, secret_key: str, client: httpx.Client | None = None):
         self.base = project_url.rstrip("/") + "/rest/v1/captures"
-        self.headers = {"apikey": secret_key, "Authorization": f"Bearer {secret_key}"}
+        self.headers = {"apikey": secret_key}
+        # Only a legacy service_role key (a JWT) also goes in Authorization;
+        # a new sb_secret_ key sent there is rejected.
+        if secret_key.startswith("eyJ"):
+            self.headers["Authorization"] = f"Bearer {secret_key}"
         self.client = client or httpx.Client(timeout=20)
 
     def pull(self) -> list[RemoteCapture]:
