@@ -58,10 +58,14 @@ export function renderNeeds(state, inbox, open, process) {
     rows.push([what, why, button(action, () => open(stage.id), i === 0)]);
   });
   if (pending) {
+    // One job at a time: while a pull or a run is going, the button says so
+    // and waits, instead of starting nothing.
+    const job = inbox.worker && inbox.worker.running ? inbox.worker.job : null;
+    const action = button(
+      { process: "Processing…", pull: "Pulling…" }[job] || "Process now", process);
+    action.disabled = Boolean(job);
     rows.push([plural(pending, "reel still to process", "reels still to process"),
-      "Summaries are written in the background",
-      button(inbox.worker && inbox.worker.job === "process" ? "Processing…" : "Process now",
-        process)]);
+      "Summaries are written when you click Process now", action]);
   }
 
   const lede = waiting.length

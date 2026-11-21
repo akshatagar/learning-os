@@ -1,6 +1,6 @@
 # Capturing reels from the phone
 
-An iOS Shortcut posts `{url, note}` to a Supabase table. The Learning OS app pulls waiting rows into its local store each time it starts, or when you click Process now, and then deletes them from Supabase. No key is stored in this repository.
+An iOS Shortcut posts `{url, note}` to a Supabase table. The Learning OS app pulls waiting rows into its local store when you click **Pull** in the Inbox (or run `python -m reel_inbox pull`), and then deletes them from Supabase. Pulling never runs the LLM; summaries are written only when you click **Process now**. No key is stored in this repository.
 
 ## 1. Supabase (once)
 
