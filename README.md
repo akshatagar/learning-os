@@ -6,6 +6,8 @@ Everything that reasons runs on your machine: concept extraction, identity resol
 
 [MIT licensed](LICENSE). ![tests](https://github.com/akshatagar/learning-os/actions/workflows/tests.yml/badge.svg)
 
+![The home page: the pipeline as a flow of stages with live counts, what is waiting on you, and how well each goal is covered by what you know](assets/readme/home.png)
+
 ## How it works
 
 ```
@@ -20,6 +22,14 @@ knowledge base ─┬─► goals → gaps (present / weak / missing) → readin
 ```
 
 The core rule: **the system never writes to persistent state when it is uncertain.** A model adjudicates each candidate against its nearest neighbours and returns a decision with a confidence. `match` at ≥ 0.85 reinforces, `new` at ≥ 0.65 inserts, and anything else goes to a human. Every decision is logged next to the human's eventual answer, so the thresholds can later be tuned against real disagreement data.
+
+Goals are measured against the knowledge base: each requirement is present, weak or missing, and the gaps drive what to read next.
+
+![Goals, each with its present, weak and missing requirements and the readings recommended for its gaps](assets/readme/goals.png)
+
+An approved idea is scored against your skills and turned into a step-by-step plan.
+
+![An execution plan for an approved idea, broken into build steps](assets/readme/plans.png)
 
 ## Setup
 
