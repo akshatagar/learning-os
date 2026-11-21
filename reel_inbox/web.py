@@ -59,6 +59,18 @@ def make_router(session_factory, worker=None, open_url=webbrowser.open) -> APIRo
                 raise HTTPException(status_code=400, detail=str(error))
         return {"ok": True}
 
+    @router.post("/reels/{capture_id}/retry")
+    def retry(capture_id: str) -> dict:
+        """A failed reel goes back in line for the next Process now."""
+        with session_factory() as session:
+            try:
+                reels.retry(session, capture_id)
+            except LookupError:
+                raise HTTPException(status_code=404, detail="no such reel")
+            except reels.NotEditable:
+                raise HTTPException(status_code=409, detail="only a failed reel can be retried")
+        return {"ok": True}
+
     @router.post("/reels/{capture_id}/open")
     def open_reel(capture_id: str) -> dict:
         """The original reel, in the default browser, never the app window."""

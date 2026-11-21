@@ -78,6 +78,17 @@ def write_manual(session, capture_id: str, title: str, description: str | None,
     session.commit()
 
 
+def retry(session, capture_id: str) -> None:
+    """Put a failed reel back in line for the next processing run."""
+    capture = session.get(Capture, capture_id)
+    if capture is None:
+        raise LookupError(capture_id)
+    if capture.status != "failed":
+        raise NotEditable(capture.status)
+    capture.status, capture.fail_reason = "pending", None
+    session.commit()
+
+
 def counts(session) -> dict:
     result = {status: 0 for status in ("pending", "ready", "failed", "dropped")}
     for (status,) in session.execute(select(Capture.status)):

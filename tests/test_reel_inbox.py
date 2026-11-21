@@ -466,3 +466,18 @@ def test_ollama_not_running_stops_the_run_and_fails_nothing(sessions):
     assert extractor.seen == [_url("o1")]
     assert _status(sessions, "o1") == ("pending", None)
     assert _status(sessions, "o2") == ("pending", None)
+
+
+def test_retry_puts_a_failed_reel_back_in_line(sessions):
+    _add(sessions, "f1", status="failed", fail_reason="llm_error")
+    with sessions() as s:
+        reels.retry(s, "f1")
+    assert _status(sessions, "f1") == ("pending", None)
+
+
+def test_only_a_failed_reel_can_be_retried(sessions):
+    _ready(sessions, "r1")
+    with sessions() as s, pytest.raises(reels.NotEditable):
+        reels.retry(s, "r1")
+    with sessions() as s, pytest.raises(LookupError):
+        reels.retry(s, "nope")

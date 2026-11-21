@@ -130,3 +130,15 @@ def test_pull_starts_a_pull(env):
 def test_pull_without_a_worker_is_unavailable(env):
     client, *_ = env
     assert client.post("/inbox/pull").status_code == 503
+
+
+def test_retry_makes_a_failed_reel_pending(env):
+    client, sessions, _ = env
+    with sessions() as s:
+        s.get(Capture, "b").status, s.get(Capture, "b").fail_reason = "failed", "llm_error"
+        s.commit()
+    assert client.post("/inbox/reels/b/retry").json() == {"ok": True}
+    reel = client.get("/inbox").json()["reels"][0]
+    assert (reel["status"], reel["fail_reason"]) == ("pending", None)
+    assert client.post("/inbox/reels/a/retry").status_code == 409
+    assert client.post("/inbox/reels/nope/retry").status_code == 404

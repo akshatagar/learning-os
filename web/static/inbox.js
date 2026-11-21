@@ -131,6 +131,12 @@ function reelRow(reel, current) {
       row.querySelector("input").focus();
     }));
   }
+  if (reel.status === "failed") {
+    actions.append(button("RETRY", async () => {
+      await post(reelPath(reel, "retry"));
+      renderInbox();
+    }));
+  }
   const drop = button(processing ? "PROCESSING…" : "DROP", async () => {
     const answer = await post(reelPath(reel, "drop"));
     if (!answer.ok) drop.textContent = "PROCESSING…";
