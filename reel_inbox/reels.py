@@ -30,6 +30,7 @@ def list_reels(session) -> list[dict]:
             "note": capture.note,
             "status": capture.status,
             "fail_reason": capture.fail_reason,
+            "title": extraction.title if extraction else None,
             "summary": extraction.summary if extraction else None,
             "captured_at": _aware(capture.captured_at).isoformat(),
         }

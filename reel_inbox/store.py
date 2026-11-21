@@ -6,7 +6,7 @@ the source of truth; the remote inbox is only a mailbox.
 """
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, create_engine, event
+from sqlalchemy import ForeignKey, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -39,7 +39,10 @@ class Extraction(Base):
     __tablename__ = "extractions"
 
     capture_id: Mapped[str] = mapped_column(ForeignKey("captures.id"), primary_key=True)
-    # Two or three sentences on what the reel says, written at processing.
+    # Only set when the reel was written up by hand (model "manual").
+    title: Mapped[str | None]
+    # Two or three sentences on what the reel says, written at processing,
+    # or the hand-written description.
     summary: Mapped[str | None]
     model: Mapped[str | None]
     extracted_at: Mapped[datetime]
@@ -68,4 +71,13 @@ def make_store(url: str | None = None):
             connection.execute("PRAGMA journal_mode=WAL")
 
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     return sessionmaker(engine, expire_on_commit=False)
+
+
+def _add_missing_columns(engine) -> None:
+    """create_all never alters a table that already exists, and this store
+    has no migrations, so a column added later is added here."""
+    if "title" not in {c["name"] for c in inspect(engine).get_columns("extractions")}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE extractions ADD COLUMN title VARCHAR"))

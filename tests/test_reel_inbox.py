@@ -342,3 +342,27 @@ def test_a_reel_dropped_during_the_pause_before_it_is_skipped(sessions):
                     sleep=lambda _: _set_status(sessions, "p2", "dropped"))
     assert extractor.seen == [_url("p1")]
     assert _status(sessions, "p2") == ("dropped", None)
+
+
+# --- store upgrade ---------------------------------------------------------------
+
+def test_an_existing_database_gains_the_title_column(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as db:  # the schema before titles existed
+        db.executescript("""
+            CREATE TABLE captures (id VARCHAR PRIMARY KEY, url VARCHAR NOT NULL,
+                source VARCHAR NOT NULL, note VARCHAR, captured_at DATETIME NOT NULL,
+                status VARCHAR NOT NULL, fail_reason VARCHAR);
+            CREATE TABLE extractions (capture_id VARCHAR PRIMARY KEY REFERENCES captures(id),
+                summary VARCHAR, model VARCHAR, extracted_at DATETIME NOT NULL);
+            INSERT INTO captures VALUES ('o1', 'https://www.instagram.com/reel/o1/', 't', NULL,
+                '2026-11-01 00:00:00', 'ready', NULL);
+            INSERT INTO extractions VALUES ('o1', 'old summary', 'm', '2026-11-01 00:00:00');
+        """)
+    stored = make_store(f"sqlite:///{path}")
+    with stored() as s:
+        [reel] = reels.list_reels(s)
+    assert reel["title"] is None
+    assert reel["summary"] == "old summary"
