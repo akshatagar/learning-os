@@ -3,13 +3,23 @@ needs nothing from the host but a session factory."""
 import webbrowser
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from reel_inbox import reels
 from reel_inbox.store import Capture
 
 
+class ManualEntry(BaseModel):
+    title: str
+    description: str | None = None
+
+
 def make_router(session_factory, worker=None, open_url=webbrowser.open) -> APIRouter:
     router = APIRouter(prefix="/inbox")
+
+    def refuse_if_processing(capture_id: str) -> None:
+        if worker is not None and worker.status().get("current") == capture_id:
+            raise HTTPException(status_code=409, detail="that reel is being processed")
 
     @router.get("")
     def state() -> dict:
@@ -23,11 +33,27 @@ def make_router(session_factory, worker=None, open_url=webbrowser.open) -> APIRo
 
     @router.post("/reels/{capture_id}/drop")
     def drop(capture_id: str) -> dict:
+        refuse_if_processing(capture_id)
         with session_factory() as session:
             try:
                 reels.drop(session, capture_id)
             except LookupError:
                 raise HTTPException(status_code=404, detail="no such reel")
+        return {"ok": True}
+
+    @router.post("/reels/{capture_id}/manual")
+    def manual(capture_id: str, entry: ManualEntry) -> dict:
+        """A title and description written by hand instead of the LLM."""
+        refuse_if_processing(capture_id)
+        with session_factory() as session:
+            try:
+                reels.write_manual(session, capture_id, entry.title, entry.description)
+            except LookupError:
+                raise HTTPException(status_code=404, detail="no such reel")
+            except reels.NotEditable:
+                raise HTTPException(status_code=409, detail="that reel already has a summary")
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
         return {"ok": True}
 
     @router.post("/reels/{capture_id}/open")

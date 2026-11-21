@@ -63,3 +63,51 @@ def test_a_non_web_reel_link_is_refused(env):
 def test_process_without_a_worker_is_unavailable(env):
     client, *_ = env
     assert client.post("/inbox/process").status_code == 503
+
+
+class FakeWorker:
+    def __init__(self, current=None):
+        self.current = current
+
+    def status(self):
+        return {"running": self.current is not None, "current": self.current}
+
+
+def _client(sessions, worker):
+    app = FastAPI()
+    app.include_router(make_router(sessions, worker=worker, open_url=lambda url: None))
+    return TestClient(app)
+
+
+def test_the_reel_being_processed_cannot_be_dropped(env):
+    _, sessions, _ = env
+    client = _client(sessions, FakeWorker(current="b"))
+    assert client.post("/inbox/reels/b/drop").status_code == 409
+    assert [r["id"] for r in client.get("/inbox").json()["reels"]] == ["b", "a"]
+    assert client.post("/inbox/reels/a/drop").status_code == 200
+
+
+def test_manual_entry_marks_a_pending_reel_ready(env):
+    client, *_ = env
+    response = client.post("/inbox/reels/b/manual", json={"title": "uv", "description": "Fast."})
+    assert response.json() == {"ok": True}
+    reel = client.get("/inbox").json()["reels"][0]
+    assert (reel["status"], reel["title"], reel["summary"]) == ("ready", "uv", "Fast.")
+
+
+def test_manual_entry_is_refused_for_the_reel_being_processed(env):
+    _, sessions, _ = env
+    client = _client(sessions, FakeWorker(current="b"))
+    assert client.post("/inbox/reels/b/manual", json={"title": "uv"}).status_code == 409
+
+
+def test_manual_entry_is_refused_for_a_ready_reel(env):
+    client, *_ = env
+    assert client.post("/inbox/reels/a/manual", json={"title": "uv"}).status_code == 409
+
+
+def test_manual_entry_needs_a_title(env):
+    client, *_ = env
+    assert client.post("/inbox/reels/b/manual", json={"title": "  "}).status_code == 400
+    assert client.post("/inbox/reels/b/manual", json={}).status_code == 422
+    assert client.post("/inbox/reels/nope/manual", json={"title": "uv"}).status_code == 404

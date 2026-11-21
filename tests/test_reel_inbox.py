@@ -366,3 +366,43 @@ def test_an_existing_database_gains_the_title_column(tmp_path):
         [reel] = reels.list_reels(s)
     assert reel["title"] is None
     assert reel["summary"] == "old summary"
+
+
+# --- written up by hand ------------------------------------------------------------
+
+def test_a_pending_reel_can_be_written_by_hand(sessions):
+    _add(sessions, "m1")
+    with sessions() as s:
+        reels.write_manual(s, "m1", "  uv  ", "Replaces pip.", now=lambda: NOW)
+    with sessions() as s:
+        e = s.get(Extraction, "m1")
+        assert (e.title, e.summary, e.model) == ("uv", "Replaces pip.", "manual")
+    assert _status(sessions, "m1") == ("ready", None)
+
+
+def test_a_failed_reel_can_be_written_by_hand(sessions):
+    _add(sessions, "m1", status="failed", fail_reason="login_wall")
+    with sessions() as s:
+        reels.write_manual(s, "m1", "uv", None)
+    assert _status(sessions, "m1") == ("ready", None)
+
+
+def test_a_ready_reel_cannot_be_written_by_hand(sessions):
+    _ready(sessions, "m1")
+    with sessions() as s, pytest.raises(reels.NotEditable):
+        reels.write_manual(s, "m1", "uv", None)
+
+
+def test_a_blank_title_is_refused(sessions):
+    _add(sessions, "m1")
+    with sessions() as s, pytest.raises(ValueError):
+        reels.write_manual(s, "m1", "   ", "text")
+    assert _status(sessions, "m1") == ("pending", None)
+
+
+def test_an_empty_description_is_stored_as_none(sessions):
+    _add(sessions, "m1")
+    with sessions() as s:
+        reels.write_manual(s, "m1", "uv", "   ")
+    with sessions() as s:
+        assert s.get(Extraction, "m1").summary is None
